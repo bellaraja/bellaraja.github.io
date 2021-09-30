@@ -1,0 +1,157 @@
+---
+title: "HW 1"
+author: "Bella Raja"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(plotly)
+```
+Loop through all of the csv data, reading it - convert the KHW and therm data to KBTU for the graphs and analysis
+```{r}
+years <- 2017:2021
+quarters <- 1:4
+pge_data_raw <- NULL
+types <- c("Electric","Gas")
+  
+#nested loops
+for (year in years){
+  for (quarter in quarters) {
+    for (type in types) {
+      filename <- 
+        paste0(
+          "pge/PGE_",
+          year,
+          "_Q",
+          quarter,
+          "_",
+          type,
+          "UsageByZip.csv"
+    ) 
+      if (!file.exists(filename))filename
+      temp <- read_csv(filename)
+     
+      #conversion to KBTU for gas and electric  
+      if(type == "Electric") {
+        temp <- 
+          temp %>%
+          mutate(TOTALKBTU = TOTALKWH * 3412) %>%
+          select(-TOTALKWH, -AVERAGEKWH)
+      }
+     if (type == "Gas") {
+       temp <- 
+         temp %>%
+         mutate (TOTALKBTU = TOTALTHM * 99976) %>%
+         select(-TOTALTHM, -AVERAGETHM)
+     }
+      pge_data_raw <- 
+        rbind(pge_data_raw, temp)
+      
+      saveRDS(pge_data_raw, "pge_data_raw.rds")
+      next()
+    }
+  }
+}
+```
+Filter the data and group by factors to be included in the plots, change the date formatting so it can be easier applied to x-axis. 
+```{r}
+pge_data <- 
+  pge_data_raw %>%
+  filter(
+    CUSTOMERCLASS %in% c("Elec- Residential", 
+                         "Elec- Commericial",
+                         "Gas- Residential", 
+                         "Gas- Commercial")
+    ) %>%
+  group_by(
+    MONTH,
+    CUSTOMERCLASS,
+    type
+  ) %>%
+  summarize (
+    TOTALKBTU = sum(TOTALKBTU, na.rm = T)
+  ) %>%
+  mutate(
+    DATE = 
+      paste(
+        YEAR,
+        MONTH,
+        "01",
+        sep = "-"
+      ) %>% as.Date()
+
+      )
+```
+ggplot() for residential energy consumption over time
+```{r}
+pge_data %>%
+  filter(CUSTOMERCLASS %in% c('Elec- Residential', 'Gas- Residential'))
+  %>%
+  ggplot() + 
+  geom_line(
+    aes(
+      x = MONTH %>% factor(), 
+      y= KBTU,
+      color= 'red'
+    )
+  ) +
+  labs(
+    x = "Months 2017-2021",
+    y= "kBTU",
+    title = "PG&E Residential Monthly Electric and Gas Usage, 2017 - Q2 2021",
+    position = 'stack'
+    color = 'red'
+  ) +
+  theme(
+    legend.position = 'axis.title.y.right'
+    
+  )
+```
+ggplot() for commercial energy consumption over time
+
+```{r}
+pge_data %>%
+  filter(CUSTOMERCLASS %in% c('Elec- Commercial', 'Gas- Commercial')) %>%
+  ggplot() + 
+  geom_line(
+    aes(
+      x = MONTH %>% factor(), 
+      y= KBTU,
+      color= 'red'
+    )
+  ) +
+  labs(
+    x = "Month",
+    y= "kBTU",
+    title = "PG&E Residential Monthly Electric and Gas Usage, 2017 - Q2 2021",
+    color = "red"
+  ) +
+  theme(
+    legend.position = 'axis.title.y.right'
+    
+  )
+```
+
+
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
