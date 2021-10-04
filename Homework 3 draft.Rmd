@@ -1,0 +1,259 @@
+---
+title: "HW 2"
+author: "Bella Raja"
+date: "10/3/2021"
+output: html_document
+---
+
+```{r setup, include = F}
+knitr::opts_chunk$set(warning = F, message = F)
+```
+Libraries
+```{r}
+library(leaflet)
+library(tidyverse)
+library(tigris)
+library(sf)
+library(censusapi)
+library(devtools)
+library(mapview)
+```
+
+```{r}
+bay_county_names <-
+  c(
+    "Alameda",
+    "Contra Costa",
+    "Marin",
+    "Napa",
+    "San Francisco",
+    "San Mateo",
+    "Santa Clara",
+    "Solano",
+    "Sonoma"
+  )
+
+bay_counties <-
+  counties("CA", cb = T, progress_bar = F) %>%
+  filter(NAME %in% bay_county_names)
+
+```
+```{r}
+bay_cbgs <- 
+  block_groups("CA", bay_county_names[1:9], cb = T, progress_bar = F)
+#cb = T ... simplified geometries
+```
+Shortcut to consollidate dec census data
+```{r}
+Sys.setenv(CENSUS_KEY="016fbc1c010418aeda7c8113dfbd9f2b1668b52d")
+
+al_pop_2020 <-
+  getCensus(
+    name = "dec/pl",
+    vintage = 2020,
+    region = "block:*", 
+    regionin = "state:06+county:001",
+    vars = "P1_001N"
+  ) %>% 
+  transmute(
+    block =
+      paste0(state,county,tract,block),
+    pop = P1_001N
+  )
+```
+```{r}
+Sys.setenv(CENSUS_KEY="016fbc1c010418aeda7c8113dfbd9f2b1668b52d")
+
+al_pop_2010 <-
+  getCensus(
+    name = "dec/pl",
+    vintage = 2010,
+    region = "block:*", 
+    regionin = "state:06+county:001",
+    vars = "P1_001N"
+  ) %>% 
+  transmute(
+    block =
+      paste0(state,county,tract,block),
+    pop = P1_001N
+  )
+```
+
+split P1 grouping 
+```{r}
+dec_vars_2020 <-
+  listCensusMetadata(
+    name = "2020/dec/pl",
+    type = "variables"
+  )
+
+smc_pop_race_2020 <-
+  getCensus(
+    name = "dec/pl",
+    vintage = 2020,
+    region = "block:*", 
+    regionin = "state:06+county:081",
+    vars = "group(P1)"
+    #vars - grab categories and subcategories
+  ) %>% 
+  mutate(
+    block =
+      paste0(state,county,tract,block)
+  ) %>% 
+  select(!c(GEO_ID,state,county,tract,NAME) & !ends_with(c("NA"))) %>% 
+  pivot_longer(
+    ends_with("N"),
+    names_to = "name",
+    values_to = "estimate"
+  ) %>%
+  left_join(
+    dec_vars_2020 %>% 
+      select(name, label)
+  ) %>% 
+  select(-name) %>% 
+  separate(
+    label,
+    into = c(NA,NA,"category1","category2"),
+    sep = "!!"
+  )
+```
+arrange
+```{r}
+dec_vars_2020 %>% 
+  filter(grepl("P1",name)) %>% 
+  select(name, label) %>% 
+  arrange(name)
+```
+filter / select categories
+```{r}
+smc_pop_race_2020 <- smc_pop_race_2020 %>% 
+  filter(race != "") %>% 
+  select(block, race, pop = estimate)
+```
+
+
+Berkeley Population density 
+
+```{r}
+al_blocks_2020 <- blocks("CA", "Alameda", year = 2020, progress_bar = F)
+
+berk_boundary <- places("CA", progress_bar = F) %>% 
+  filter(NAME == "Berkeley")
+
+berk_pop_2020 <- al_pop_2020 %>% 
+  left_join(al_blocks_2020 %>% select(block = GEOID20)) %>% 
+  st_as_sf() %>% 
+  st_centroid() %>% 
+  .[berk_boundary, ] %>% 
+  st_set_geometry(NULL) %>% 
+  left_join(al_blocks_2020 %>% select(block = GEOID20)) %>% 
+  st_as_sf()
+```
+  
+```{r}
+mapview(berk_pop_2020, zcol = "pop")
+```
+```{r}
+bay_pdas <- st_read("https://opendata.arcgis.com/datasets/4df9cb38d77346a289252ced4ffa0ca0_0.geojson")
+
+al_pdas <-
+  bay_pdas %>% 
+  filter(county == "Alameda") %>% 
+  st_transform(4269)
+
+al_pdas_blocks <- al_blocks_2020[al_pdas, ]
+```
+
+```{r}
+leaflet() %>% 
+  addProviderTiles(providers$CartoDB.Positron) %>% 
+  addPolygons(
+    data = al_pdas,
+    stroke = F,
+    fillOpacity = 0.5
+  ) %>% 
+  addPolygons(
+    data = al_pdas_blocks,
+    color = "red",
+    weight = 0.75,
+    fill = F
+  )
+```
+adds area in square meters
+```{r}
+al_pdas_blocks_area <-
+  al_pdas_blocks %>% 
+  st_transform(26910) %>% 
+  mutate(area = st_area(.))
+```
+geometry
+```{r}
+al_pdas_blocks_intersection <-
+  al_pdas_blocks_area %>% 
+  st_intersection(
+    al_pdas %>% 
+      st_transform(26910)
+  )
+```
+
+```{r}
+leaflet() %>% 
+  addProviderTiles(providers$CartoDB.Positron) %>% 
+  addPolygons(
+    data = al_pdas,
+    stroke = F,
+    fillOpacity = 0.5
+  ) %>% 
+  addPolygons(
+    data = al_pdas_blocks_intersection %>% 
+      st_transform(4269),
+    color = "red",
+    weight = 0.75,
+    fill = F
+  )
+```
+```{r}
+al_pdas_blocks_3 <-
+  smc_pdas_blocks %>% 
+  select(block = GEOID20) %>% 
+  left_join(al_pop_2020) %>% 
+  st_transform(26910) %>% 
+  mutate(original_area = st_area(.)) %>% 
+  st_intersection(
+    al_pdas %>% 
+      st_transform(26910)
+  ) %>% 
+  mutate(
+    leftover_area = st_area(.),
+    perc_area = leftover_area / original_area,
+    pop = pop * perc_area
+  )
+```
+```{r}
+sum(al_pdas_blocks_3$pop) %>% round()
+```
+
+
+  
+  
+  
+  
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
