@@ -5,9 +5,10 @@ date: "10/8/2021"
 output: html_document
 ---
 
-```{r, include = F}
-knitr::opts_chunk$set(echo = F, warnings = F, messages = F)
+```{r setup, include = F}
+knitr::opts_chunk$set(warning = F, message = F)
 ```
+
 
 ```{r}
 library(censusapi)
@@ -93,35 +94,9 @@ bay_pums <-
   filter(PUMA %in% bay_pumas$PUMACE10)
 ```
 
-```{r}
-bay_pums_example <-
-  bay_pums %>% 
-  filter(!duplicated(SERIALNO)) %>% 
-  mutate(
-    WGTP = as.numeric(WGTP),
-    nonenglish_renter_lowinc = ifelse(
-      (HHL != 1) &
-        (TEN == 3) &
-        (HINCP < 100000),
-      WGTP,
-      0
-    )
-  ) %>% 
-  group_by(PUMA) %>% 
-  summarize(
-    perc_nonenglish_renter_lowinc =
-      sum(nonenglish_renter_lowinc, na.rm =T)/sum(WGTP, na.rm = T)*100
-  ) %>% 
-  left_join(
-    bay_pumas %>% 
-      select(PUMACE10),
-    by = c("PUMA" = "PUMACE10")
-  ) %>% 
-  st_as_sf()
-```
 my variables
 ```{r}
-bay_pums_example <-
+bay_pums_elderly <-
   bay_pums %>% 
   filter(!duplicated(SERIALNO)) %>% 
   mutate(
@@ -147,17 +122,17 @@ bay_pums_example <-
   ) %>% 
   st_as_sf()
 ```
-map
+
 ```{r}
 pums_pal <- colorNumeric(
   palette = "Reds",
-  domain = bay_pums_example$perc_xint_60_older
+  domain = bay_pums_elderly$perc_xint_60_older
 )
 
 leaflet() %>%
   addTiles() %>% 
   addPolygons(
-    data = bay_pums_example,
+    data = bay_pums_elderly,
     fillColor = ~pums_pal(perc_xint_60_older),
     color = "white",
     opacity = 0.5,
@@ -165,7 +140,7 @@ leaflet() %>%
     weight = 1,
     label = ~paste0(
       round(perc_xint_60_older), 
-      "% People 60 and over without internet access"
+      "% Households without internet with 1 or more residents 60 or older"
     ),
     highlightOptions = highlightOptions(
       weight = 2,
@@ -173,44 +148,13 @@ leaflet() %>%
     )
   ) %>% 
   addLegend(
-    data = bay_pums_example,
+    data = bay_pums_elderly,
     pal = pums_pal,
     values = ~perc_xint_60_older,
-    title = "% People 60 and older  <br> without internet access"
+    title = "% Households without internet <br> with 1 or more residents <br> 60 or older "
   )
 ```
 
-```{r}
-pums_pal <- colorNumeric(
-  palette = "Oranges",
-  domain = bay_pums_example$perc_nonenglish_renter_lowinc
-)
-
-leaflet() %>%
-  addTiles() %>% 
-  addPolygons(
-    data = bay_pums_example,
-    fillColor = ~pums_pal(perc_nonenglish_renter_lowinc),
-    color = "white",
-    opacity = 0.5,
-    fillOpacity = 0.5,
-    weight = 1,
-    label = ~paste0(
-      round(perc_nonenglish_renter_lowinc), 
-      "% non-English-speaking renter households making less than $100K"
-    ),
-    highlightOptions = highlightOptions(
-      weight = 2,
-      opacity = 1
-    )
-  ) %>% 
-  addLegend(
-    data = bay_pums_example,
-    pal = pums_pal,
-    values = ~perc_nonenglish_renter_lowinc,
-    title = "% non-English-speaking<br>renter households<br>making less than $100K"
-  )
-```
 
 ## R Markdown
 
