@@ -17,7 +17,6 @@ library(sf)
 library(censusapi)
 library(devtools)
 library(mapview)
-#compatible version of tigris
 install_github('walkerke/tigris')
 Sys.setenv(CENSUS_KEY="016fbc1c010418aeda7c8113dfbd9f2b1668b52d")
 ```
