@@ -1,0 +1,182 @@
+---
+title: "hw 5"
+author: "Bella Raja"
+date: "10/23/2021"
+output: html_document
+---
+
+```{r setup, include = F}
+knitr::opts_chunk$set(echo = F, warning= F, message=F)
+```
+
+```{r}
+library(tidyverse)
+library(tigris)
+library(censusapi)
+library(mapview)
+library(sf)
+library(leaflet)
+library(readxl)
+library(plotly)
+
+Sys.setenv(CENSUS_KEY = "ffe5c482aad3c87fd918ba8a6bd5967ae4228456")
+
+acs_vars_2019_5yr <-
+  listCensusMetadata(
+    name = "2019/acs/acs5",
+    type = "variables"
+  )
+  
+```
+
+```{r}
+ces4 <- read_excel(
+    "calenviroscreen40resultsdatadictionary_F_2021.xlsx")
+```
+
+```{r}
+colnames(ces4)
+
+ces4_clean <- ces4 %>%
+  dplyr::select(!ends_with("Pctl"))
+
+sum(is.na(ces4_clean$Poverty))
+
+ces4_clean %>%
+  pull (Poverty) %>%
+  is.na()%>%
+  sum()
+
+ca_tracts <- tracts("CA")
+
+ces4_map <- ces4_clean %>%
+  left_join(
+    ca_tracts %>%
+      transmute (GEOID = GEOID %>% as.numeric()),
+    by = c("Census Tract" = "GEOID")
+  ) %>%
+ st_as_sf()
+
+```
+```{r}
+mapview(ces4_map, zcol = "Asthma")
+```
+
+```{r}
+mapview(ces4_map, zcol = "PM2.5")
+```
+Scatter plot of PM2.5 and Asthma, with a best-fit line. 
+
+```{r}
+slope <- 0
+yintercept <- mean(ces4_clean$Asthma)
+best_fit_candidate <- slope * ces4_clean$PM2.5 + yintercept 
+
+ggplot( 
+  data = ces4_clean, 
+    aes(
+      x = PM2.5,
+      y = Asthma
+      
+    )
+) +
+  geom_point() +
+  geom_line(
+    aes(
+      x = ces4_clean$PM2.5,
+      y = best_fit_candidate),
+    color = "red",
+    size = 1
+  )
+
+
+```
+The best fit line is not optimal in representing the trends.
+
+Linear regression analysis using `lm()` and report the results. Give a layperson’s interpretation of the results of your regression model, including these statements, filling in the blanks: 
+“An increase of PM2.5 in the environment is associated with an increase of Asthma in California Communities”; "1.5% of the variation in PM2.5 is explained by the variation in Asthma”. 
+```{r}
+
+ggplot( 
+  data = ces4_clean, 
+    aes(
+      x = PM2.5,
+      y = Asthma
+      
+    )
+) +
+  geom_point() +
+    
+  
+  geom_smooth(method = "lm")
+```
+
+Residuals
+```{r}
+slope <- 0
+yintercept <- mean(ces4_clean$Asthma)
+
+best_fit_candidate <- slope * ces4_clean$PM2.5 + yintercept
+
+residuals <- ces4_clean$Asthma - best_fit_candidate
+sumsq_residuals <- sum(residuals^2)
+
+sumsq_residuals
+```
+
+```{r}
+get_sumsq_residuals <- function(x){
+
+  slope <- x[1]
+  yintercept <- x[2]
+  
+  best_fit_candidate <- slope * ces4_clean$PM2.5 + yintercept 
+  
+  residuals <- ces4_clean$Asthma - best_fit_candidate
+  
+  sumsq_residuals <- sum(residuals^2)
+}
+
+  sumsq_residuals 
+```
+```{r}
+model <- lm(Asthma ~ PM2.5, ces4_clean)
+summary(model)
+```
+
+Plot Density
+```{r}
+
+plot(density(residuals(model)))
+```
+Log transformation
+
+```{r}
+log_model <- lm(log(Asthma) ~ PM2.5, ces4_clean)
+plot(density(residuals(log_model)))
+```
+This result has changed to an exponential visualization with the log transformation
+
+
+
+
+## R Markdown
+
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
