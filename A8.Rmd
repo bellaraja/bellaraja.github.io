@@ -1,0 +1,295 @@
+---
+title: "A8"
+author: "Bella Raja"
+date: "11/12/2021"
+output: html_document
+---
+
+```{r setup, include = F}
+knitr::opts_chunk$set(echo = F, warning= F, message=F)
+```
+
+```{r}
+library(tigris)
+library(tidyverse)
+library(tidycensus)
+library(sf)
+library(censusapi)
+library(leaflet)
+library(StatMatch)
+
+Sys.setenv(CENSUS_KEY = "ffe5c482aad3c87fd918ba8a6bd5967ae4228456")
+
+raw_pums_2014_2019 <- readRDS("pums_2014_2019_wts.rds", refhook = NULL)
+```
+This assignment maps out the changes in BART ridership and commuter population among Antioch households 
+after the Antioch BART station opened in mid-2018. 
+PUMA 01309 will be used for the Antioch analysis and comparison.
+```{r}
+ca_pumas <-
+  pumas("CA", cb = T, progress_bar = F)
+
+bay_county_names <-
+  c("Alameda",
+    "Contra Costa",
+    "Marin",
+    "Napa",
+    "San Francisco",
+    "San Mateo",
+    "Santa Clara",
+    "Solano",
+    "Sonoma"
+    
+  )
+
+bay_counties <-
+  counties("CA", cb= T, progress_bar = F) %>%
+  filter(NAME %in% bay_county_names)
+
+bay_pumas <-
+  ca_pumas %>%
+  st_centroid()%>%
+  .[bay_counties, ]%>%
+  st_drop_geometry() %>%
+  left_join(ca_pumas %>% select (GEOID10))%>%
+  st_as_sf()
+  
+
+```
+
+
+This is Map of Bay Area PUMS with a marker at the location of the Pittsburg Center BART Station; this is the easternmost stop towards Antioch as of construction. 
+
+```{r}
+leaflet()%>% 
+  addProviderTiles(providers$CartoDB.Positron) %>% 
+  addPolygons(
+    data = bay_pumas,
+    weight = 1, 
+    color = "gray",
+    label = ~PUMACE10
+  )%>% 
+  addMarkers(
+    lng = -121.88876733108545,
+    lat = 38.0168599047045
+  ) %>% 
+  addPolygons(
+    data = bay_pumas %>% 
+      filter(PUMACE10 == "01309")
+  )
+  
+```
+
+
+
+```{r}
+pums_bart <-raw_pums_2014_2019 %>%
+  mutate(
+    PWGTP = as.numeric(PWGTP),
+    bart = ifelse(
+      JWTR %in% c("4"),
+      PWGTP,
+      0
+    )
+  ) %>% 
+  group_by(PUMA, year) %>% 
+  summarize(
+    pop = sum(PWGTP),
+    bart = sum(bart)
+  )
+```
+
+This is a map of the population distribution in 2017 
+```{r}
+pums_pal <- colorNumeric(
+  palette = "YlOrRd",
+  domain = pums_bart %>% 
+    filter(year == 2017) %>% 
+    pull(pop)
+)
+
+leaflet() %>% 
+  addProviderTiles(providers$CartoDB.Positron) %>% 
+  addPolygons(
+    data = pums_bart %>% 
+      filter(year == 2017) %>% 
+      right_join(bay_pumas %>% select(PUMA = PUMACE10)) %>% 
+      st_as_sf(),
+    fillColor = ~pums_pal(pop),
+    color = "white",
+    weight = 1,
+    fillOpacity = 0.5,
+    label = ~paste0(PUMA,": Population ", pop)
+  )
+```
+
+This is a map of the distribution of BART commuters in the Bay Area in 2017 
+```{r}
+pums_pal <- colorNumeric(
+  palette = "GnBu",
+  domain = pums_bart %>% 
+    filter(year == 2017) %>% 
+    pull(bart)
+)
+
+leaflet() %>% 
+  addProviderTiles(providers$CartoDB.Positron) %>% 
+  addPolygons(
+    data = pums_bart %>% 
+      filter(year == 2017) %>% 
+      right_join(bay_pumas %>% select(PUMA = PUMACE10)) %>% 
+      st_as_sf(),
+    fillColor = ~pums_pal(bart),
+    color = "white",
+    weight = 1,
+    fillOpacity = 0.5,
+    label = ~paste0(PUMA,": ", bart, " BART commute riders")
+  )
+```
+
+```{r}
+pums_bart_clean <-
+  pums_bart %>% 
+  select(-pop) %>% 
+  pivot_wider(
+    names_from = year,
+    values_from = bart
+  )
+```
+
+```{r}
+obs_matrix <-
+  pums_bart_clean %>% 
+  ungroup() %>% 
+  select(`2014`,`2015`,`2016`,`2017` ) %>% 
+  as.matrix()
+
+dist_matrix <- mahalanobis.dist(obs_matrix)
+
+rownames(dist_matrix) <- pums_bart_clean$PUMA
+colnames(dist_matrix) <- pums_bart_clean$PUMA
+
+match <- dist_matrix["01309",] %>% 
+  as.data.frame() %>% 
+  rownames_to_column() %>% 
+  rename(
+    PUMA = rowname,
+    match = "."
+  ) %>% 
+  right_join(
+    pums_bart_clean
+  ) %>% 
+  arrange(match) %>% 
+  .[1:11, ] %>% 
+  left_join(bay_pumas %>% select(PUMA = PUMACE10)) %>% 
+  st_as_sf()
+
+```
+This map shows the comparison between the Antioch PUMA region and to the other PUMAs using the Mahalanobis matching technique.
+```{r}
+leaflet() %>% 
+  addTiles() %>% 
+  addProviderTiles(providers$CartoDB.Positron) %>% 
+  addPolygons(
+    data = match[1, ],
+    color = "red",
+    label = ~PUMA
+  ) %>% 
+  addPolygons(
+    data = match[-1, ],
+    label = ~PUMA
+  )
+```
+
+
+```{r}
+match_pumas <-
+  match %>% 
+  filter(!PUMA %in% c("01309 ")) %>% 
+  st_drop_geometry() %>% 
+  select(-match) %>% 
+  pivot_longer(
+    -PUMA,
+    names_to = "year",
+    values_to = "bart"
+  ) %>%
+  group_by(
+    year
+  ) %>% 
+  summarize(
+    bart = mean(bart),
+    PUMA = "Similar PUMAs"
+  )
+
+treatment_pumas <-
+  match %>% 
+  filter(PUMA %in% c("01309")) %>% 
+  select(-match) %>% 
+  st_drop_geometry() %>% 
+  pivot_longer(
+    -PUMA,
+    names_to = "year",
+    values_to = "bart"
+  )
+
+rbind(
+  treatment_pumas,
+  match_pumas
+) %>% 
+  ggplot(
+    aes(
+      x = as.numeric(year),
+      y = bart,
+      color = PUMA
+    )
+  ) +
+  geom_line() +
+  geom_vline(xintercept = 2018, linetype = "dashed") +
+  labs(
+    title = "Antioch vs. control neighborhoods, BART ridership",
+    x = "Year",
+    y = "BART commute riders"
+  )
+```
+2018 shows a huge peak in BART ridership for the Antioch PUM. Compared to similar PUMAS, Antioch's ridership was much higher but the similar PUM ridership continued to climb in 2018. 
+
+Difference-in-Difference Analysis
+```{r}
+transit_did <-
+  match %>% 
+  st_drop_geometry() %>% 
+  select(-match) %>% 
+  pivot_longer(
+    -PUMA,
+    names_to = "year",
+    values_to = "bart"
+  ) %>% 
+  mutate(
+    year = year %>% as.numeric(),
+    time = ifelse(year >= 2018, 1, 0),
+    treated = ifelse(PUMA == "01309", 1, 0)
+  )
+
+did_reg <- lm(bart ~ treated*time, data = transit_did)
+
+summary(did_reg)
+```
+
+About 1,100 new BART commuters for Antioch in 2018. This result is highly statistically significant because the p-value is much less than 5%. These results demonstrate how the opening of this new branch probably increased the number of commuters in the Antioch population households.
+
+This is an interesting comparison to the textbook example in which the Milpitas BART ridership increased about 250 new commuters in 2017, the year in question, which was not a statistically significant shift.
+
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
