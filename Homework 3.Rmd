@@ -6,7 +6,7 @@ output: html_document
 ---
 
 ```{r setup, include = F}
-knitr::opts_chunk$set(warning = F, message = F)
+knitr::opts_chunk$set(echo = F, warning= F, message=F)
 ```
 
 
@@ -41,9 +41,6 @@ pums_2019_1yr <- getCensus(
     "PWGTP",
     "WGTP",
     "NP",
-    "HHL",
-    "HINCP",
-    "TEN",
     "R60",
     "ACCESS",
     "R65",
@@ -94,7 +91,7 @@ bay_pums <-
   filter(PUMA %in% bay_pumas$PUMACE10)
 ```
 
-my variables
+
 ```{r}
 bay_pums_elderly <-
   bay_pums %>% 
@@ -103,8 +100,6 @@ bay_pums_elderly <-
     WGTP = as.numeric(WGTP),
     xint_60_older = ifelse(
       (R60 == 1|| 2 ) &
-      #||
-        #(R65 == 1 || 2) &
         (ACCESS == 3),
       WGTP,
       0
@@ -123,6 +118,11 @@ bay_pums_elderly <-
   st_as_sf()
 ```
 
+Using the 2019 PUMA data and correlated variables, I assessed the percent of Bay Area households with one or more residents who are 60 years old or older who also do not have internet access. 
+I chose these variables as markers of heat vulnerability, because elderly populations especially vulnerable to heat-related illness. Additionally, not having internet access can increase that vulnerability because it is even more isolating. For example, the household may not be able to receive urgent alerts or communications about heat waves, how to mitigate risk, or how to get help in a crisis. 
+These factors combined are very important in assessing potential risks and vulnerabilities within communities and who to target for increased aid or support in a crisis.
+
+Map of the Percent of Bay Area Households without Internet Access with 1 or More Residents Age 60 or Older with Bay Area PUMA Data
 ```{r}
 pums_pal <- colorNumeric(
   palette = "Reds",
@@ -155,23 +155,12 @@ leaflet() %>%
   )
 ```
 
+This map demonstrates that the PUMA in between Oakland and San Leandro has the highest vulnerability with these variables, with 21% of households not having internet access as well as having one or more residents 60 or older.
 
-## R Markdown
+It's also interesting that the PUMS with the highest percentages seem to be in more urban areas, especially those that are historically lower income, such as Oakland and the Mission area of San Francisco. More rural PUMS, have relatively low percentages which makes sense since they are more likely to be more isolated and vulnerable to more extreme heat conditions. 
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+In the future, it would be interesting to continue this inquiry and map income levels or other demographics as well. This map demonstrates that Bay Area household (in particular households with residents 60 or older) for the most part have high percentages of internet access, so targeting that minority who might have extra vulnerability seems very feasible for policy makers and community organizers.
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+ 
 
-```{r cars}
-summary(cars)
-```
 
-## Including Plots
-
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
-```
-
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
