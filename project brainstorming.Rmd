@@ -1,0 +1,1389 @@
+---
+title: "holc"
+author: "Bella Raja"
+date: "12/4/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(sf)
+library(tidyverse)
+library(tigris)
+library(tidycensus)
+library(censusapi)
+library(leaflet)
+library(mapview)
+Sys.setenv(CENSUS_KEY = "ffe5c482aad3c87fd918ba8a6bd5967ae4228456")
+
+Sys.getenv("ffe5c482aad3c87fd918ba8a6bd5967ae4228456")
+
+```
+
+```{r}
+bay_tracts <- get_acs(geography="tract", 
+                       variables = "B06011_001", 
+                       state="CA", 
+                       county=c("Alameda","Contra Costa", "Marin", "Napa", 
+               "San Francisco", "San Mateo", "Santa Clara", "Solano", "Sonoma"),
+                       year=2019, 
+                       survey='acs5',
+                       geometry=TRUE)
+```
+
+```{r}
+variables <- load_variables(2019, 'acs5', cache = TRUE)
+```
+
+```{r}
+
+bay_tracts_processed <- bay_tracts %>%
+  rename_all(tolower) %>%
+  st_transform(26910)%>%
+  mutate(tot_area = st_area(geometry))
+```
+
+```{r}
+holc <- st_read('holc.geojson')
+```
+```{r}
+holc_proc <- holc %>%
+  st_transform(26910) %>%
+  filter(state=="CA")
+```
+
+```{r}
+holc_fixed <- st_buffer(holc_proc, 0.0)
+int <- st_intersection(holc_fixed, bay_tracts_processed)
+
+```
+```{r}
+int_area <- int %>%
+  mutate(holc_area = st_area(geometry)) %>%
+  st_drop_geometry() %>%
+  group_by(geoid, holc_grade) %>%
+  summarize(
+    holc_area = as.numeric(sum(holc_area)),
+    tot_area = as.numeric(max(tot_area))
+  )
+view(int_area)
+```
+
+```{r}
+holc_areas <- merge(
+    bay_tracts, 
+    int_area, 
+    by.x = "GEOID", 
+    by.y = "geoid",
+    all.x = TRUE
+  )
+view(holc_areas)
+```
+
+```{r}
+plot(holc_areas['D'])
+```
+
+```{r}
+mapview(
+  holc_areas,
+  zcol = "holc_grade",
+  col.regions = colorRamps::green2red
+  )
+```
+final project rough
+
+---
+title: "final project"
+author: "Bella Raja"
+output: html_document
+---
+
+```{r setup, include = F}
+knitr::opts_chunk$set(echo = F, warning= F, message=F)
+```
+
+```{r}
+library(tidyverse)
+library(censusapi)
+library(tigris)
+library(leaflet)
+library(mapview)
+library(sf)
+library(tidycensus)
+library(plotly)
+library(dplyr)
+library(tmap)
+library(mapdeck)
+library(segregation)
+
+
+Sys.setenv(CENSUS_KEY = "ffe5c482aad3c87fd918ba8a6bd5967ae4228456")
+Sys.getenv("ffe5c482aad3c87fd918ba8a6bd5967ae4228456")
+```
+
+
+
+
+```{r}
+acs_vars_2019_5yr <-
+  listCensusMetadata(
+    name = "2019/acs/acs5",
+    type = "variables"
+  )
+```
+
+Alameda County Migration
+```{r}
+acs_vars_2019_1yr <-
+  listCensusMetadata(
+    name = "2019/acs/acs1",
+    type = "variables"
+  )
+
+ala_mobility_current_19 <- 
+  getCensus(
+    name = "acs/acs1",
+    vintage = 2019,
+    region = "county:001",
+    regionin = "state:06",
+    vars = c("group(B07010)")
+  ) %>% 
+  select(!c(GEO_ID,state,NAME) & !ends_with(c("EA","MA","M"))) %>%
+  pivot_longer(
+    ends_with("E"),
+    names_to = "variable",
+    values_to = "estimate"
+  ) %>%
+  left_join(
+    acs_vars_2019_1yr %>% 
+      select(name, label), 
+    by = c("variable" = "name")
+  ) %>% 
+  select(-variable)
+```
+Mobility in Alameda County
+```{r}
+ala_mobility_current_19 <- 
+  getCensus(
+    name = "acs/acs1",
+    vintage = 2019,
+    region = "county:001",
+    regionin = "state:06",
+    vars = c("group(B07010)")
+  ) %>% 
+  select(!c(GEO_ID,state,NAME) & !ends_with(c("EA","MA","M"))) %>%
+  pivot_longer(
+    ends_with("E"),
+    names_to = "variable",
+    values_to = "estimate"
+  ) %>%
+  left_join(
+    acs_vars_2019_1yr %>% 
+      select(name, label), 
+    by = c("variable" = "name")
+  ) %>% 
+  select(-variable) %>% 
+  separate(
+    label,
+    into = c(NA,NA,"mobility","temp","income"),
+    sep = "!!"
+  ) %>% 
+  mutate(
+    income = ifelse(
+      temp == "No income",
+      temp,
+      income
+    ),
+    mobility = ifelse(
+      mobility %in% c("Same house 1 year ago:", "Moved within same county:"),
+      "Here since last year",
+      "Inflow"
+    )
+  ) %>% 
+  filter(!is.na(income)) %>% 
+  group_by(mobility, income) %>% 
+  summarize(estimate = sum(estimate))
+```
+Inflow since last year
+```{r}
+ala_mobility_lastyear_19 <- 
+  getCensus(
+    name = "acs/acs1",
+    vintage = 2019,
+    region = "county:001",
+    regionin = "state:06",
+    vars = c("group(B07410)")
+  ) %>% 
+  select(!c(GEO_ID,state,NAME) & !ends_with(c("EA","MA","M"))) %>%
+  pivot_longer(
+    ends_with("E"),
+    names_to = "variable",
+    values_to = "estimate"
+  ) %>%
+  left_join(
+    acs_vars_2019_1yr %>% 
+      select(name, label), 
+    by = c("variable" = "name")
+  ) %>% 
+  select(-variable)
+```
+
+outflow
+```{r}
+ala_mobility_lastyear_19 <- 
+  getCensus(
+    name = "acs/acs1",
+    vintage = 2019,
+    region = "county:001",
+    regionin = "state:06",
+    vars = c("group(B07410)")
+  ) %>% 
+  select(!c(GEO_ID,state,NAME) & !ends_with(c("EA","MA","M"))) %>%
+  pivot_longer(
+    ends_with("E"),
+    names_to = "variable",
+    values_to = "estimate"
+  ) %>%
+  left_join(
+    acs_vars_2019_1yr %>% 
+      select(name, label), 
+    by = c("variable" = "name")
+  ) %>% 
+  select(-variable) %>% 
+  separate(
+    label,
+    into = c(NA,NA,"mobility","temp","income"),
+    sep = "!!"
+  ) %>% 
+  mutate(
+    income = ifelse(
+      temp == "No income",
+      temp,
+      income
+    ),
+    mobility = ifelse(
+      mobility %in% c("Same house:", "Moved within same county:"),
+      "Here since last year",
+      "Outflow"
+    )
+  ) %>% 
+  filter(!is.na(income)) %>% 
+  group_by(mobility, income) %>% 
+  summarize(estimate = sum(estimate))
+```
+
+total pop in 2018
+```{r}
+ala_mobility_current_18 <- 
+  getCensus(
+    name = "acs/acs1",
+    vintage = 2018,
+    region = "county:001",
+    regionin = "state:06",
+    vars = c("group(B07010)")
+  ) %>% 
+  select(!c(GEO_ID,state,NAME) & !ends_with(c("EA","MA","M"))) %>%
+  pivot_longer(
+    ends_with("E"),
+    names_to = "variable",
+    values_to = "estimate"
+  ) %>%
+  left_join(
+    acs_vars_2019_1yr %>% 
+      select(name, label), 
+    by = c("variable" = "name")
+  ) %>% 
+  select(-variable) %>% 
+  separate(
+    label,
+    into = c(NA,NA,"mobility","temp","income"),
+    sep = "!!"
+  ) %>% 
+  mutate(
+    income = ifelse(
+      temp == "No income",
+      temp,
+      income
+    ),
+    mobility = "Here last year"
+  ) %>% 
+  filter(!is.na(income)) %>% 
+  group_by(mobility, income) %>% 
+  summarize(estimate = sum(estimate))
+```
+
+flow
+```{r}
+ala_flows_19 <-
+  rbind(
+    ala_mobility_current_18,
+    ala_mobility_lastyear_19 %>% 
+      filter(mobility == "Outflow"),
+    ala_mobility_current_19 %>% 
+      filter(mobility == "Inflow"),
+    ala_mobility_current_19 %>% 
+      group_by(income) %>% 
+      summarize(estimate = sum(estimate)) %>% 
+      mutate(mobility = "Here this year")
+  ) %>% 
+  pivot_wider(
+    names_from = mobility,
+    values_from = estimate
+  ) %>% 
+  mutate(
+    `External net` = Inflow - Outflow,
+    `Internal net` = `Here this year` - `Here last year` - `External net`,
+  ) %>% 
+  select(
+    `Income tier` = income, 
+    `Internal net`,
+    `External net`,
+    `Here last year`, 
+    `Here this year`, 
+    Outflow, 
+    Inflow
+  )
+view(ala_flows_19)
+```
+Bay Migration
+
+```{r}
+acs_vars_2019_1yr <-
+  listCensusMetadata(
+    name = "2019/acs/acs1",
+    type = "variables"
+  )
+
+bay_mobility_current_19 <- 
+  getCensus(
+    name = "acs/acs1",
+    vintage = 2019,
+    region = "county:001,013,041,055,075,081,085,095,097",
+    regionin = "state:06",
+    vars = c("group(B07010)")
+  ) %>% 
+  select(!c(GEO_ID,state,NAME) & !ends_with(c("EA","MA","M"))) %>%
+  pivot_longer(
+    ends_with("E"),
+    names_to = "variable",
+    values_to = "estimate"
+  ) %>%
+  left_join(
+    acs_vars_2019_1yr %>% 
+      select(name, label), 
+    by = c("variable" = "name")
+  ) %>% 
+  select(-variable)
+```
+Mobility in Bay Area
+```{r}
+bay_mobility_current_19 <- 
+  getCensus(
+    name = "acs/acs1",
+    vintage = 2019,
+    region = "county:001,013,041,055,075,081,085,095,097",
+    regionin = "state:06",
+    vars = c("group(B07010)")
+  ) %>% 
+  select(!c(GEO_ID,state,NAME) & !ends_with(c("EA","MA","M"))) %>%
+  pivot_longer(
+    ends_with("E"),
+    names_to = "variable",
+    values_to = "estimate"
+  ) %>%
+  left_join(
+    acs_vars_2019_1yr %>% 
+      select(name, label), 
+    by = c("variable" = "name")
+  ) %>% 
+  select(-variable) %>% 
+  separate(
+    label,
+    into = c(NA,NA,"mobility","temp","income"),
+    sep = "!!"
+  ) %>% 
+  mutate(
+    income = ifelse(
+      temp == "No income",
+      temp,
+      income
+    ),
+    mobility = ifelse(
+      mobility %in% c("Same house 1 year ago:", "Moved within same county:"),
+      "Here since last year",
+      "Inflow"
+    )
+  ) %>% 
+  filter(!is.na(income)) %>% 
+  group_by(mobility, income) %>% 
+  summarize(estimate = sum(estimate))
+```
+Inflow since last year
+```{r}
+bay_mobility_lastyear_19 <- 
+  getCensus(
+    name = "acs/acs1",
+    vintage = 2019,
+    region = "county:001,013,041,055,075,081,085,095,097",
+    regionin = "state:06",
+    vars = c("group(B07410)")
+  ) %>% 
+  select(!c(GEO_ID,state,NAME) & !ends_with(c("EA","MA","M"))) %>%
+  pivot_longer(
+    ends_with("E"),
+    names_to = "variable",
+    values_to = "estimate"
+  ) %>%
+  left_join(
+    acs_vars_2019_1yr %>% 
+      select(name, label), 
+    by = c("variable" = "name")
+  ) %>% 
+  select(-variable)
+```
+
+outflow
+```{r}
+bay_mobility_lastyear_19 <- 
+  getCensus(
+    name = "acs/acs1",
+    vintage = 2019,
+    region = "county:001,013,041,055,075,081,085,095,097",
+    regionin = "state:06",
+    vars = c("group(B07410)")
+  ) %>% 
+  select(!c(GEO_ID,state,NAME) & !ends_with(c("EA","MA","M"))) %>%
+  pivot_longer(
+    ends_with("E"),
+    names_to = "variable",
+    values_to = "estimate"
+  ) %>%
+  left_join(
+    acs_vars_2019_1yr %>% 
+      select(name, label), 
+    by = c("variable" = "name")
+  ) %>% 
+  select(-variable) %>% 
+  separate(
+    label,
+    into = c(NA,NA,"mobility","temp","income"),
+    sep = "!!"
+  ) %>% 
+  mutate(
+    income = ifelse(
+      temp == "No income",
+      temp,
+      income
+    ),
+    mobility = ifelse(
+      mobility %in% c("Same house:", "Moved within same county:"),
+      "Here since last year",
+      "Outflow"
+    )
+  ) %>% 
+  filter(!is.na(income)) %>% 
+  group_by(mobility, income) %>% 
+  summarize(estimate = sum(estimate))
+```
+
+total pop in 2018
+```{r}
+bay_mobility_current_18 <- 
+  getCensus(
+    name = "acs/acs1",
+    vintage = 2018,
+    region = "county:001,013,041,055,075,081,085,095,097",
+    regionin = "state:06",
+    vars = c("group(B07010)")
+  ) %>% 
+  select(!c(GEO_ID,state,NAME) & !ends_with(c("EA","MA","M"))) %>%
+  pivot_longer(
+    ends_with("E"),
+    names_to = "variable",
+    values_to = "estimate"
+  ) %>%
+  left_join(
+    acs_vars_2019_1yr %>% 
+      select(name, label), 
+    by = c("variable" = "name")
+  ) %>% 
+  select(-variable) %>% 
+  separate(
+    label,
+    into = c(NA, NA, "mobility","temp","income"),
+    sep = "!!"
+  ) %>% 
+  mutate(
+    income = ifelse(
+      temp == "No income",
+      temp,
+      income
+    ),
+    mobility = "Here last year"
+  ) %>% 
+  filter(!is.na(income)) %>% 
+  group_by(mobility, income) %>% 
+  summarize(estimate = sum(estimate))
+```
+
+flow
+```{r}
+bay_flows_19 <-
+  rbind(
+    bay_mobility_current_18,
+    bay_mobility_lastyear_19 %>% 
+      filter(mobility == "Outflow"),
+    bay_mobility_current_19 %>% 
+      filter(mobility == "Inflow"),
+    bay_mobility_current_19 %>% 
+      group_by(income) %>% 
+      summarize(estimate = sum(estimate)) %>% 
+      mutate(mobility = "Here this year")
+  ) %>% 
+  pivot_wider(
+    names_from = mobility,
+    values_from = estimate
+  ) %>% 
+  mutate(
+    `External net` = Inflow - Outflow,
+    `Internal net` = `Here this year` - `Here last year` - `External net`,
+  ) %>% 
+  select(
+    `Income tier` = income, 
+    `Internal net`,
+    `External net`,
+    `Here last year`, 
+    `Here this year`, 
+    Outflow, 
+    Inflow
+  )
+view(bay_flows_19)
+
+
+```
+
+```{r}
+token <- "pk.eyJ1IjoiYmVsbGFyIiwiYSI6ImNrd3JjNmFkOTB2MmQycWp2Mm42OXc5dXgifQ.pttZ3IYhuP9cq19jSqvIzA"
+
+bay_inflow <- get_flows(
+  geography = "county",
+  state = "CA",
+  county = c("Alameda","Contra Costa", "Marin", "Napa", "San Francisco", "San Mateo", "Santa Clara", "Solano", "Sonoma"),
+  geometry = TRUE,
+  key = "ffe5c482aad3c87fd918ba8a6bd5967ae4228456"
+) %>%
+  filter(variable == "MOVEDIN") %>%
+  na.omit() %>%
+  arrange(desc(estimate))
+```
+
+
+```{r}
+bay_inflow  %>%
+  slice_max(estimate, n = 30) %>%
+  mutate(weight = estimate / 500) %>%
+  mapdeck(token = token) %>%
+  add_arc(origin = "centroid2",
+          destination = "centroid1",
+          stroke_width = "weight",
+          update_view = FALSE) 
+```
+bay outflow
+```{r}
+bay_outflow <- get_flows(
+  geography = "county",
+  year = 2019,
+  state = "CA",
+  county = c("Alameda","Contra Costa", "Marin", "Napa", "San Francisco", "San Mateo", "Santa Clara", "Solano", "Sonoma"),
+  geometry = TRUE,
+  key = "ffe5c482aad3c87fd918ba8a6bd5967ae4228456"
+) %>%
+  filter(variable == "MOVEDOUT") %>%
+  na.omit() %>%
+  arrange(desc(estimate))
+```
+
+```{r}
+bay_outflow  %>%
+  slice_max(estimate, n = 30) %>%
+  mutate(weight = estimate / 500) %>%
+  mapdeck(token = token) %>%
+  add_arc(origin = "centroid2",
+          destination = "centroid1",
+          stroke_width = "weight",
+          update_view = FALSE) 
+```
+
+Racial Equity Analysis
+```{r}
+
+```
+
+
+```{r}
+census_race_categories <- 
+  c(
+    "White Alone",
+    "Black or African American",
+    "American Indian and Alaska Native Alone",
+    "Asian Alone",
+    "Native Hawaiian and Other Pacific Islander Alone",
+    "Some Other Race Alone",
+    "Two or More Races"
+  )
+
+bay_race_tracts <-
+  1:7 %>% 
+  map_dfr(function(x){
+    getCensus(
+      name = "acs/acs5",
+      vintage = 2019,
+      region = "tract:*",
+      regionin = "state:06+county:001,013,041,055,075,081,085,095,097",
+      vars = paste0("B19001",LETTERS[x],"_001E")
+    ) %>%
+      mutate(
+        tract = paste0(state, county, tract) %>% as.numeric(),
+        race = census_race_categories[x]
+      ) %>% 
+      select(
+        tract,
+        race,
+        estimate = paste0("B19001",LETTERS[x],"_001E")
+      )
+  })
+```
+
+```{r}
+bay_income_race <-
+  1:7 %>% 
+  map_dfr(function(x){
+    getCensus(
+      name = "acs/acs5",
+      vintage = 2019,
+      region = "county:001,013,041,055,075,081,085,095,097",
+      regionin = "state:06",
+      vars = paste0("group(B19001",LETTERS[x],")")
+    ) %>%
+      select(!c(GEO_ID,state,NAME) & !ends_with(c("EA","MA","M"))) %>%
+      pivot_longer(
+        ends_with("E"),
+        names_to = "name",
+        values_to = "estimate"
+      ) %>%
+      left_join(
+        acs_vars_2019_5yr %>% 
+          select(name, label)
+      ) %>% 
+      select(-name) %>% 
+      separate(
+        label,
+        into = c(NA,NA,"income"),
+        sep = "!!"
+      ) %>% 
+      filter(!is.na(income)) %>% 
+      mutate(race = census_race_categories[x])
+  })
+```
+
+```{r}
+bay_income_race %>% 
+  group_by(income, race) %>% 
+  summarize(estimate = sum(estimate)) %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = income,
+      y = estimate,
+      fill = race
+    ),
+    stat = "identity",
+    position = "stack"
+  ) +
+  labs(
+    x = "Household income",
+    y = "Number of households",
+    title = "Bay Area household income by race",
+    fill = "Race of householder"
+  )
+```
+
+Mobility by Race
+```{r}
+bay_mobility_race <-
+  1:7 %>% 
+  map_dfr(function(x){
+    getCensus(
+      name = "acs/acs5",
+      vintage = 2019,
+      region = "county:001,013,041,055,075,081,085,095,097",
+      regionin = "state:06",
+      vars = paste0("group(B07010)", LETTERS[x],")")
+    ) %>%
+      select(!c(GEO_ID,state,NAME) & !ends_with(c("EA","MA","M"))) %>%
+      pivot_longer(
+        ends_with("E"),
+        names_to = "name",
+        values_to = "estimate"
+      ) %>%
+      left_join(
+        acs_vars_2019_5yr %>% 
+          select(name, label)
+      ) %>% 
+      select(-name) %>% 
+      separate(
+        label,
+        into = c(NA,NA,"mobility"),
+        sep = "!!"
+      ) %>% 
+      filter(!is.na(mobility)) %>% 
+      mutate(race = census_race_categories[x])
+  })
+```
+
+```{r}
+bay_mobility_race %>% 
+  group_by(mobility, race) %>% 
+  summarize(estimate = sum(estimate)) %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = mobility,
+      y = estimate,
+      fill = race
+    ),
+    stat = "identity",
+    position = "stack"
+  ) +
+  labs(
+    x = "Household Mobility",
+    y = "Number of households",
+    title = "Bay Area household mobility by race",
+    fill = "Race of householder"
+  ) 
+```
+
+```{r}
+bay_mobility_race %>% 
+  group_by(mobility, race) %>% 
+  summarize(estimate = sum(estimate)) %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = mobility %>% factor(levels = unique(bay_mobility_race$mobility)),
+      y = estimate,
+      fill = race %>% factor(levels = unique(bay_mobility_race$race))
+    ),
+    stat = "identity",
+    position = "stack"
+  ) +
+  labs(
+    x = "Household mobility",
+    y = "Number of households",
+    title = "Bay Area household mobility by race",
+    fill = "Race of householder"
+  ) +
+  coord_flip()
+```
+
+```{r}
+bay_mobility_race %>% 
+  group_by(mobility, race) %>% 
+  summarize(estimate = sum(estimate)) %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = mobility %>% factor(levels = rev(unique(bay_mobility_race$mobility))),
+      y = estimate,
+      fill = race %>% factor(levels = rev(unique(bay_mobility_race$race)))
+    ),
+    stat = "identity",
+    position = "fill"
+  ) +
+  labs(
+    x = "Household mobility",
+    y = "Proportion of households",
+    title = "Bay Area household mobility by race",
+    fill = "Race of householder"
+  ) +
+  coord_flip() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "vertical"
+  )  +
+  guides(
+    fill = guide_legend(
+      reverse = T
+    )
+  )
+```
+
+```{r}
+bay_income_race_total <-
+  bay_income_race %>% 
+  group_by(race) %>% 
+  summarize(estimate = sum(estimate, na.rm = T)) %>% 
+  mutate(income = "Total")
+```
+
+```{r}
+bay_mobility_race_total <-
+  bay_mobility_race %>% 
+  group_by(race) %>% 
+  summarize(estimate = sum(estimate, na.rm = T)) %>% 
+  mutate(mobility = "Total")
+```
+
+```{r}
+bay_income_race %>% 
+  group_by(income, race) %>% 
+  summarize(estimate = sum(estimate)) %>% 
+  rbind(bay_Income_race_total) %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = income %>% factor(levels = rev(c("Total",unique(bay_income_race$income)))),
+      y = estimate,
+      fill = race %>% factor(levels = rev(unique(bay_income_race$race)))
+    ),
+    stat = "identity",
+    position = "fill"
+  ) +
+  labs(
+    x = "Household income",
+    y = "Proportion of households",
+    title = "Bay Area household income by race",
+    fill = "Race of householder"
+  ) +
+  coord_flip() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "vertical"
+  )  +
+  guides(
+    fill = guide_legend(
+      reverse = T
+    )
+  )
+```
+
+```{r}
+
+bay_mobility_race %>% 
+  group_by(mobility, race) %>% 
+  summarize(estimate = sum(estimate)) %>% 
+  rbind(bay_mobility_race_total) %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = mobility %>% factor(levels = rev(c("Total",unique(bay_mobility_race$mobility)))),
+      y = estimate,
+      fill = race %>% factor(levels = rev(unique(bay_mobility_race$race)))
+    ),
+    stat = "identity",
+    position = "fill"
+  ) +
+  labs(
+    x = "Household Mobility",
+    y = "Proportion of households",
+    title = "Bay Area household mobility by race",
+    fill = "Race of householder"
+  ) +
+  coord_flip() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "vertical"
+  )  +
+  guides(
+    fill = guide_legend(
+      reverse = T
+    )
+  )
+```
+
+
+Housing Costs
+```{r}
+housing_value <- get_acs(
+  geography = "county",
+  year = 2019,
+  state = "CA",
+  county = c("Alameda","Contra Costa", "Marin", "Napa", "San Francisco", "San Mateo", "Santa Clara", "Solano", "Sonoma"),
+  variables = "B25077_001",
+  survey = "acs1",
+  geometry = TRUE,
+  resolution = "20m",
+  key = "ffe5c482aad3c87fd918ba8a6bd5967ae4228456"
+)
+```
+
+```{r}
+housing_pal <- colorNumeric(
+  palette = "plasma",
+  domain = housing_value$estimate
+)
+
+leaflet() %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  addPolygons(data = housing_value,
+              color = ~housing_pal(estimate),
+              weight = 0.5,
+              smoothFactor = 0.2,
+              fillOpacity = 0.5,
+              label = ~estimate) %>%
+  addLegend(
+    position = "bottomright",
+    pal = housing_pal,
+    values = housing_value$estimate,
+    title = "Median home value"
+  )
+```
+
+```{r}
+ala_housing <-
+  getCensus(
+    name = "acs/acs5",
+    vintage = 2019,
+    region = "block group:*", 
+    regionin = "state:06+county:001",
+    vars = "group(B25104)"
+  ) %>%
+  mutate(
+    cbg =
+      paste0(state,county,tract,block_group)
+  ) %>% 
+  select(!c(GEO_ID,state,county,tract,block_group,NAME) & !ends_with(c("EA","MA","M"))) %>%
+  pivot_longer(
+    ends_with("E"),
+    names_to = "variable",
+    values_to = "estimate"
+  ) %>%
+  left_join(
+    acs_vars_2019_5yr %>% 
+      select(name, label), 
+    by = c("variable" = "name")
+  ) %>% 
+  select(-variable) %>% 
+  separate(
+    label,
+    into = c(NA,"total"),
+    sep = "!!"
+  ) %>% 
+  filter(!is.na(total))
+
+
+```
+
+
+```{r}
+ala_blockgroups <- block_groups("CA", "Alameda", cb = T, progress_bar = F)
+
+```
+
+```{r}
+housing_pal <- colorNumeric(
+  palette = "Blues",
+  domain = ala_housing$estimate
+    
+)
+
+
+leaflet() %>% 
+  addProviderTiles(provider = providers$CartoDB.Positron) %>% 
+  addPolygons(
+    data = 
+      ala_housing %>% 
+        left_join(
+          ala_blockgroups %>% select(GEOID), 
+          by = c("cbg" = "GEOID")
+        ) %>% 
+        st_as_sf(),
+    fillColor = ~housing_pal (total),
+    color = "white",
+    opacity = 0.5,
+    fillOpacity = 0.75,
+    weight = 1,
+    label = ~paste0(
+      round(total), 
+      "Total"
+    ),
+    highlightOptions = highlightOptions(
+      weight = 2,
+      opacity = 1
+    )
+  ) %>% 
+  addLegend(
+    data = ala_housing,
+    pal = housing_pal,
+    values = ~total,
+    title = "Housing Costs"
+  )
+```
+
+```{r}
+alameda_race <- get_acs(
+  geography = "tract",
+  year = 2019,
+  state = "CA",
+  county = "Alameda",
+  variables = c(White = "B03002_003",
+                Black = "B03002_004",
+                Native = "B03002_005",
+                Asian = "B03002_006",
+                Hispanic = "B03002_012"),
+  summary_var = "B03002_001",
+  geometry = TRUE,
+  key = "ffe5c482aad3c87fd918ba8a6bd5967ae4228456"
+) %>%
+  mutate(percent = 100 * (estimate / summary_est))
+
+view(alameda_race)
+```
+```{r}
+alameda_asian <- filter(alameda_race, variable == "Asian")
+alameda_black <- filter(alameda_race, variable == "Black")
+alameda_hisp <- filter(alameda_race, variable == "Hispanic")
+alameda_nat_am <- filter(alameda_race, variable == "Native")
+alameda_white <- filter(alameda_race, variable == "White")
+
+```
+
+
+
+```{r}
+alameda_asian_pal <- colorNumeric(
+  palette = "Purples",
+  domain = alameda_asian$percent
+    
+)
+
+leaflet() %>% 
+  addProviderTiles(providers$CartoDB.Positron) %>% 
+  addPolygons(
+    data = alameda_asian,
+    fillColor = ~race_pal(percent),
+    color = "white",
+    weight = 0.5,
+    fillOpacity = 0.5,
+    label = ~percent
+  )
+```
+
+```{r}
+
+
+bay_race <- get_acs(
+  geography = "county",
+  year = 2019,
+  state = "CA",
+  county = c("Alameda","Contra Costa", "Marin", "Napa", "San Francisco", "San Mateo", "Santa Clara", "Solano", "Sonoma"),
+  variables = c(White = "B03002_003",
+                Black = "B03002_004",
+                Native = "B03002_005",
+                Asian = "B03002_006",
+                Hispanic = "B03002_012"),
+  summary_var = "B03002_001",
+  geometry = TRUE,
+  key = "ffe5c482aad3c87fd918ba8a6bd5967ae4228456"
+) 
+
+
+bay_race_percent <- bay_race %>%
+  mutate(percent = 100 * (estimate / summary_est))
+
+
+
+view(bay_race)
+```
+change to percent
+```{r}
+bay_asian <- filter(bay_race_percent, variable == "Asian")
+bay_black <- filter(bay_race, variable == "Black")
+bay_hisp <- filter(bay_race, variable == "Hispanic")
+bay_nat_am <- filter(bay_race, variable == "Native")
+bay_white <- filter(bay_race, variable == "White")
+```
+
+```{r}
+bay_asian_pal <- colorNumeric(
+  palette = "Blues",
+  domain = bay_asian$percent
+    
+)
+
+leaflet() %>% 
+  addProviderTiles(providers$CartoDB.Positron) %>% 
+  addPolygons(
+    data = bay_asian,
+    fillColor = ~bay_asian_pal(percent),
+    color = "white",
+    weight = 0.5,
+    fillOpacity = 0.5,
+    label = ~percent
+  )
+```
+
+```{r}
+bay_race_pal <- colorNumeric(
+  palette = "Blues",
+  domain = bay_race_percent$percent
+    
+)
+
+leaflet() %>% 
+  addProviderTiles(providers$CartoDB.Positron) %>% 
+  addPolygons(
+    data = bay_race_percent,
+    fillColor = ~bay_race_pal(percent),
+    color = "white",
+    weight = 0.5,
+    fillOpacity = 0.5,
+    label = ~percent
+  )
+
+bay_race_percent
+
+groups <- c("Hispanic" = "Hispanic",
+            "White" = "White",
+            "Black" = "Black",
+            "Native American" = "Native",
+            "Asian" = "Asian")
+ observeEvent(input$group, {
+    
+    pal <- colorNumeric("viridis", group_to_map()$estimate)
+    
+    leafletProxy("map") %>%
+      clearShapes() %>%
+      clearControls() %>%
+      addPolygons(data = group_to_map(),
+                  color = ~pal(estimate),
+                  weight = 0.5,
+                  fillOpacity = 0.5,
+                  smoothFactor = 0.2,
+                  label = ~estimate) %>%
+      addLegend(
+        position = "bottomright",
+        pal = pal,
+        values = group_to_map()$estimate,
+        title = "% of population"
+      )
+  })
+  
+}---> shiny
+
+ui <- fluidPage(
+  sidebarLayout(
+    sidebarPanel(
+      selectInput(
+        inputId = "group",
+        label = "Select a group to map",
+        choices = groups
+      )
+    ),
+    mainPanel(
+      leafletOutput("map", height = "600")
+    )
+    
+  )
+)
+```
+
+```{r}
+county_names <-
+  c("Alameda","Contra Costa", "Marin", "Napa", "San Francisco", "San Mateo", "Santa Clara", "Solano", "Sonoma")
+  
+```
+
+```{r}
+
+```
+
+
+
+segregation
+```{r}
+#
+bay_race_seg <- bay_race %>%
+  group_by(NAME)
+         
+view(bay_race_seg)
+```
+
+
+```{r}
+bay_seg <- bay_race %>%
+  filter(variable %in% c("White", "Black")) %>%
+  group_by(NAME)%>%
+  group_modify(~
+    dissimilarity(.x,
+    group = "variable",
+    unit = "GEOID",
+    weight = "estimate"
+  )
+) %>% 
+arrange(desc(est))
+view(bay_seg)         
+
+```
+Mutual within
+```{r}
+mutual_within(
+  data = bay_race,
+  group = "variable",
+  unit = "GEOID",
+  weight = "estimate",
+  within = "NAME",
+  wide = TRUE
+) 
+```
+```{r}
+bay_tracts <-
+    get_acs(
+      geography="tract", 
+      variables = "B06011_001", 
+      state="CA", 
+      county=c("Alameda","Contra Costa", "Marin", "Napa", 
+               "San Francisco", "San Mateo", "Santa Clara", "Solano", "Sonoma"),
+      year=2019, 
+      survey='acs5',
+      geometry=TRUE)
+```
+
+```{r}
+variables <- load_variables(2019, 'acs5', cache = TRUE)
+```
+
+```{r}
+bay_tracts_processed <- bay_tracts %>%
+  rename_all(tolower) %>%
+  st_transform(26910) %>%
+  mutate(tot_area = st_area(geometry))
+```
+
+```{r}
+holc <- st_read('holc.geojson')
+```
+```{r}
+holc_proc <- holc %>%
+  filter(state=="CA") %>%
+  st_transform(26910)
+```
+
+```{r}
+holc_fixed <- st_buffer(holc_proc, 0.0)
+int <- st_intersection(holc_fixed, bay_tracts_processed)
+
+view(int)
+```
+
+```{r}
+int_area <- int %>%
+  mutate(holc_area = st_area(geometry)) %>%
+  st_drop_geometry() %>%
+  group_by(geoid, holc_grade) %>%
+  summarize(
+    holc_area = as.numeric(sum(holc_area)),
+    tot_area = as.numeric(max(tot_area))
+  ) 
+
+```
+
+```{r}
+holc_areas <- merge(
+    bay_tracts, 
+    int_area, 
+    by.x = "GEOID", 
+    by.y = "geoid",
+    all.x = TRUE
+  ) 
+
+view(holc_areas)
+```
+
+```{r}
+mapview(
+  holc_areas,
+  zcol = "holc_grade",
+  col.regions = colorRamps::green2red
+  )
+
+```
+
+
+Dot density
+
+```{r}
+race_split <- bay_race %>%
+    split(.$variable)
+
+generate_samples <- function(data) 
+    suppressMessages(st_sample(data, size = round(data$estimate / 100)))
+
+points <- map(race_split, generate_samples)
+points <- imap(points, 
+               ~st_sf(data_frame(bay_race = rep(.y, length(.x))),
+                      geometry = .x))
+points <- do.call(rbind, points)
+```
+
+
+```{r}
+points <- bay_race %>% group_by(variable) %>% summarise()
+
+points %>% mutate(n_points = map_int(geometry, nrow))
+```
+
+
+```{r}
+points <- points %>%
+    mutate(race = factor(
+        variable,
+        levels = c("Asian", "Black",
+                   "Hispanic", "Native", "White")))
+
+
+```
+
+```{r}
+theme_set(theme_minimal() +
+              theme(panel.grid.major = element_line(size = 0),
+                    plot.background = element_rect(fill = "#fdfdfd",
+                                                   colour = NA),
+                    axis.title = element_blank(),
+                    text = element_text(family = "Roboto Condensed"),
+                    axis.text = element_blank(),
+                    legend.position = "bottom"))
+```
+
+```{r}
+ggplot() + 
+    geom_sf(data = points, 
+            aes(colour = race,
+                fill = race),
+            size = .1) + 
+    scale_color_brewer(type = "div", palette = 4) + 
+    scale_fill_brewer(type = "div", palette = 4)
+```
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
