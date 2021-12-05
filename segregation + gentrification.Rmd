@@ -1,0 +1,573 @@
+---
+title: "gentrification and segregation"
+author: "Bella Raja"
+date: "12/2/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(sf)
+library(tidyverse)
+library(tigris)
+library(tidycensus)
+library(censusapi)
+library(leaflet)
+library(mapview)
+Sys.setenv(CENSUS_KEY = "ffe5c482aad3c87fd918ba8a6bd5967ae4228456")
+census_api_key("ffe5c482aad3c87fd918ba8a6bd5967ae4228456", overwrite = FALSE, install = FALSE)
+Sys.getenv("ffe5c482aad3c87fd918ba8a6bd5967ae4228456")
+```
+
+new libraries
+```{r}
+library(rmapshaper)
+library(tmap)
+```
+
+segregation 
+```{r}
+ca_tracts19 <- 
+  getCensus(
+    name = "acs/acs1",
+    vintage = 2019,
+    region = "county:001,013,041,055,075,081,085,095,097",
+    regionin = "state:06",
+    vars = c(tpop = "B03002_001", 
+                            nhwhite = "B03002_003", nhblk = "B03002_004",
+                            nhasn = "B03002_006", hisp = "B03002_012",
+                            medinc19 = "B19013_001", rent19  = "B25064_001",
+                            houseval19 = "B25077_001", bach = "B15003_022",
+                            masters = "B15003_023", prof = "B15003_024",
+                            phd = "B15003_025", totcol = "B15003_001"),
+    geometry = TRUE)
+ 
+  
+  
+  
+```
+
+
+```{r}
+region = "tract:*"
+    regionin = "state:06+county:001",
+    
+  ) %>% 
+  mutate(
+    tract = paste0(state, county, tract) %>% as.numeric()
+  )
+```
+
+```{r}
+ca.tracts19 <- get_acs(geography = "tract", 
+              year = 2019,
+              variables = c(tpop = "B03002_001", 
+                            nhwhite = "B03002_003", nhblk = "B03002_004",
+                            nhasn = "B03002_006", hisp = "B03002_012",
+                            medinc19 = "B19013_001", rent19  = "B25064_001",
+                            houseval19 = "B25077_001", bach = "B15003_022",
+                            masters = "B15003_023", prof = "B15003_024",
+                            phd = "B15003_025", totcol = "B15003_001"),
+              key = "ffe5c482aad3c87fd918ba8a6bd5967ae4228456",
+              state = "CA",
+              survey = "acs5",
+              output = "wide",
+              geometry = TRUE)
+```
+
+```{r}
+ca.tracts19 <- ca.tracts19 %>% 
+  rename_with(~ sub("E$", "", .x), everything()) %>%
+  mutate(pnhwhite19 = 100*(nhwhite/tpop), pnhasn19 = 100*(nhasn/tpop), 
+        pnhblk19 = 100*(nhblk/tpop), phisp19 = 100*(hisp/tpop), 
+        pcol19 = 100*(bach+masters+prof+phd)/totcol) %>%
+  select(c(GEOID,tpop, pnhwhite19, pnhasn19, pnhblk19, phisp19,
+           nhwhite, nhasn, nhblk, hisp,
+           medinc19, rent19, houseval19, pcol19))  
+```
+City Boundaries
+```{r}
+pl <- places(state = "CA", year = 2019, cb = TRUE)
+```
+
+
+```{r}
+large.cities <- filter(pl, NAME == "San Diego" |
+                         NAME == "San Jose" | NAME == "San Francisco" |
+                         NAME == "Fresno")
+
+
+```
+
+```{r}
+large.tracts <- ms_clip(target = ca.tracts19, clip = large.cities, remove_slivers = TRUE)
+```
+
+```{r}
+large.tracts <- large.tracts %>%
+                st_join(large.cities, left=FALSE)
+```
+
+```{r}
+large.tracts <- large.tracts %>%
+                select(-(STATEFP:AFFGEOID), -(LSAD:AWATER))
+
+```
+
+```{r}
+large.tracts %>%
+  filter(NAME == "San Francisco") %>%
+  tm_shape(unit = "mi") +
+    tm_polygons(col = "phisp19", style = "quantile",palette = "Reds", 
+              border.alpha = 0, title = "") +
+    tm_scale_bar(breaks = c(0, 1, 2), text.size = 0.75, position = c("right", "bottom")) + tm_layout(main.title = "Percent Hispanic in San Francisco City Tracts", main.title.size = 0.9, frame = FALSE)
+```
+
+
+```{r}
+hennepin_race <- get_acs(
+  geography = "tract",
+  state = "MN",
+  county = "Hennepin",
+  variables = c(White = "B03002_003",
+                Black = "B03002_004",
+                Native = "B03002_005",
+                Asian = "B03002_006",
+                Hispanic = "B03002_012"),
+  summary_var = "B03002_001",
+  geometry = TRUE
+) %>%
+  mutate(percent = 100 * (estimate / summary_est))
+```
+
+
+```{r}
+alameda_race <- get_acs(
+  geography = "tract",
+  state = "CA",
+  county = "Alameda",
+  variables = c(White = "B03002_003",
+                Black = "B03002_004",
+                Native = "B03002_005",
+                Asian = "B03002_006",
+                Hispanic = "B03002_012"),
+  summary_var = "B03002_001",
+  geometry = TRUE
+) %>%
+  mutate(percent = 100 * (estimate / summary_est))
+```
+
+```{r}
+groups <- unique(hennepin_race$variable)
+
+hennepin_dots <- map_dfr(groups, ~{
+  hennepin_race %>%
+    filter(variable == .x) %>%
+    st_transform(26915) %>%
+    mutate(est100 = as.integer(estimate / 100)) %>%
+    st_sample(size = .$est100, exact = TRUE) %>%
+    st_sf() %>%
+    mutate(group = .x)
+}) %>%
+  slice_sample(prop = 1)
+```
+
+
+```{r}
+groups <- unique(alameda_race$variable)
+
+alameda_dots <- map_dfr(groups, ~{
+  alameda_race %>%
+    filter(variable == .x) %>%
+    st_transform(26915) %>%
+    mutate(est100 = as.integer(estimate / 100)) %>%
+    st_sample(size = .$est100, exact = TRUE) %>%
+    st_sf() %>%
+    mutate(group = .x)
+}) %>%
+  slice_sample(prop = 1)
+```
+
+```{r}
+background_tracts <- filteralameda_race, variable == "White")
+
+tm_shape(background_tracts, 
+         projection = sf::st_crs(26915)) + 
+  tm_polygons(col = "white", 
+              border.col = "grey") + 
+  tm_shape(hennepin_dots) +
+  tm_dots(col = "group", 
+          palette = "Set1",
+          size = 0.005, 
+          title = "Race/ethnicity")
+```
+
+```{r}
+```{r}
+groups <- unique(alameda_race$variable)
+
+alameda_dots <- 
+  map_dfr(groups, ~{
+  alameda_race %>%
+    filter(variable == .x) %>%
+    st_transform(26910) %>%
+    mutate(est100 = as.integer(estimate / 100)) %>%
+    st_sample(size = .$est100, exact = TRUE) %>%
+    st_sf() %>%
+    mutate(group = .x)
+}) %>%
+  slice_sample(prop = 1)
+```
+
+
+```{r}
+background_tracts <- filter(alameda_race, variable == "White")
+
+tm_shape(background_tracts, 
+         projection = sf::st_crs(26915)) + 
+  tm_polygons(col = "white", 
+              border.col = "grey") + 
+  tm_shape(hennepin_dots) +
+  tm_dots(col = "group", 
+          palette = "Set1",
+          size = 0.005, 
+          title = "Race/ethnicity")
+```
+
+```{r}
+"ffe5c482aad3c87fd918ba8a6bd5967ae4228456"
+```
+```{r}
+ca_acs_data <- get_acs(
+  geography = "tract",
+  variables = c(
+    white = "B03002_003",
+    black = "B03002_004",
+    asian = "B03002_006",
+    hispanic = "B03002_012"
+  ), 
+  state = "CA",
+  geometry = TRUE,
+  year = 2019,
+  key ="ffe5c482aad3c87fd918ba8a6bd5967ae4228456" 
+) 
+```
+
+
+
+```{r}
+us_urban_areas <- get_acs(
+  geography = "urban area",
+  variables = "B01001_001",
+  geometry = TRUE,
+  year = 2019,
+  survey = "acs1",
+  key ="ffe5c482aad3c87fd918ba8a6bd5967ae4228456"
+) %>%
+  filter(estimate >= 750000) %>%
+  transmute(urban_name = str_remove(NAME, 
+                                    fixed(", CA Urbanized Area (2010)")))
+view(us_urban_areas)
+```
+
+```{r}
+ca_urban_data <- ca_acs_data %>%
+  st_join(us_urban_areas, left = FALSE) %>%
+  select(-NAME) %>%
+  st_drop_geometry()
+
+view(ca_urban_data)
+```
+
+```{r}
+ca_urban_data %>%
+  filter(variable %in% c("white", "hispanic"),
+         urban_name == "San Francisco--Oakland") %>%
+  dissimilarity(
+    group = "variable",
+    unit = "GEOID",
+    weight = "estimate"
+  )
+view(ca_urban_data)
+```
+
+```{r}
+ca_urban_data %>%
+  filter(variable %in% c("white", "hispanic")) %>%
+  group_by(urban_name) %>%
+  group_modify(~
+    dissimilarity(.x,
+      group = "variable",
+      unit = "GEOID",
+      weight = "estimate"
+    )
+  ) %>% 
+  arrange(desc(est))
+```
+
+HOLC
+
+```{r}
+bay_race_tracts <-
+  1:7 %>% 
+  map_dfr(function(x){
+    getCensus(
+      name = "acs/acs5",
+      vintage = 2019,
+      region = "tract:*",
+      regionin = "state:06+county:001,013,041,055,075,081,085,095,097",
+      vars = paste0("B19001",LETTERS[x],"_001E")
+    ) %>%
+      mutate(
+        tract = paste0(state, county, tract) %>% as.numeric(),
+        race = census_race_categories[x]
+      ) %>% 
+      select(
+        tract,
+        race,
+        estimate = paste0("B19001",LETTERS[x],"_001E")
+      )
+  })
+```
+bay tracts
+```{r}
+bay_tracts <-
+    get_acs(
+      geography="tract", 
+      variables = "B06011_001", 
+      state="CA", 
+      county=c("Alameda","Contra Costa", "Marin", "Napa", 
+               "San Francisco", "San Mateo", "Santa Clara", "Solano", "Sonoma"),
+      year=2019, 
+      survey='acs5',
+      geometry=TRUE)
+      
+    
+```
+
+```{r}
+variables <- load_variables(2019, 'acs5', cache = TRUE)
+view(variables)
+```
+
+```{r}
+bay_tracts_processed <- bay_tracts %>%
+  rename_all(tolower) %>%
+  st_transform(26910) %>%
+  mutate(tot_area = st_area(geometry))
+```
+
+```{r}
+holc <- st_read('holc.geojson')
+```
+```{r}
+holc_proc <- holc %>%
+  filter(state=="CA") %>%
+  rename_all(tolower) %>%
+  st_transform(26910)
+```
+
+```{r}
+holc_fixed <- st_buffer(holc_proc, 0.0)
+int <- st_intersection(holc_fixed, bay_tracts_processed)
+```
+```{r}
+int_area <- int %>%
+  mutate(holc_area = st_area(geometry)) %>%
+  st_drop_geometry() %>%
+  group_by(geoid, holc_grade) %>%
+  summarise(
+    holc_area = as.numeric(sum(holc_area)),
+    tot_area = as.numeric(max(tot_area))
+  ) %>%
+  pivot_wider(
+    id_cols = geoid,
+    names_from = holc_grade,
+    values_from = holc_area, 
+    values_fill = list(holc_area = 0)
+  )
+view(int_area)
+```
+```{r}
+holc_areas <- merge(
+    bay_tracts, 
+    int_area, 
+    by.x = "GEOID", 
+    by.y = "geoid",
+    all.x = TRUE
+  ) 
+view(holc_areas)
+```
+
+```{r}
+mapview(holc_areas)
+```
+
+```{r}
+bayb_tracts <- get_acs(geography="tract", 
+                       variables = "B06011_001", 
+                       state="CA", 
+                       county=c("Alameda","Contra Costa", "Marin", "Napa", 
+               "San Francisco", "San Mateo", "Santa Clara", "Solano", "Sonoma"),
+                       year=2019, 
+                       survey='acs5',
+                       geometry=TRUE)
+
+```
+
+```{r}
+variables <- load_variables(2019, 'acs5', cache = TRUE)
+```
+
+```{r}
+bayb_tracts_processed <- bayb_tracts %>%
+  rename_all(tolower) %>%
+  st_transform(26910) %>%
+  mutate(tot_area = st_area(geometry))
+
+```
+
+```{r}
+holc_b <- st_read('holc.geojson') %>%
+  filter(state=="CA") %>%
+  st_transform(26910)
+```
+
+```{r}
+holc_proc_b <- st_read('holc.geojson') %>%
+  filter(state=="CA") %>%
+  st_transform(26910)
+
+```
+
+```{r}
+
+holc_fixed <- st_buffer(holc_proc_b, 0.0)
+int <- st_intersection(holc_fixed, bayb_tracts_processed)
+```
+
+```{r}
+int_area <- int %>%
+  mutate(holc_area = st_area(geometry)) %>%
+  st_drop_geometry() %>%
+  group_by(geoid, holc_grade) %>%
+  summarize(
+    holc_area = as.numeric(sum(holc_area)),
+    tot_area = as.numeric(max(tot_area))
+  ) %>%
+  pivot_wider(
+    id_cols = geoid,
+    names_from = holc_grade,
+    values_from = holc_area, 
+    values_fill = list(holc_area = 0)
+  )
+```
+```{r}
+holcb_areas <- merge(
+    bayb_tracts, 
+    int_area, 
+    by.x = "GEOID", 
+    by.y = "geoid",
+    all.x = TRUE
+  )
+view(holcb_areas)
+```
+
+```{r}
+plot(holcb_areas['D'])
+```
+```{r}
+mapview(
+  holcb_areas,
+  zcol = "holc_grade",
+  col.regions = colorRamps::green2red
+  )
+```
+
+```{r}
+holc_pal <- colorNumeric(
+  palette = "Greens",
+  domain = holc_areas$holc_grade
+    
+)
+ addPolygons(
+    data = holc_areas,
+    fillColor = Green(holc_areas['A']),
+    color = "white",
+    weight = 0.5,
+    fillOpacity = 0.5,
+    label = ~percent
+  ) %>%
+```
+
+```{r}
+
+
+leaflet() %>% 
+  addProviderTiles(providers$CartoDB.Positron) %>% 
+  addPolygons(
+    data = holc_areas,
+    color = "green",
+    label = ~NAME
+  )
+
+```
+```{r}
+mapview(holc_areas, holc_grade = 'A', color = "green" ) +
+  mapview(holc_areas, holc_grade = 'B', color = "yellow" ) +
+  mapview(holc_areas, holc_grade  = 'C', color = "orange" ) +
+  mapview(holc_areas, holc_grade  = 'D', color = "red") 
+
+```
+```{r}
+mapview(holc_areas, holc_grade = 'A', color = "green" )
+
+```
+```{r}
+mapview(holc_areas, holc_grade = 'B', color = "yellow" )
+```
+
+
+```{r}
+mapview(holc_areas['D'], color = "red") 
+```
+
+```{r}
+mapview(
+  holc_areas,
+  zcol = "holc_grade",
+  col.regions = colorRamps::green2red
+  )
+
+```
+
+```{r}
+mapview(holc_areas['D'])
+```
+```{r}
+mapview(holc_areas['A'])
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
