@@ -1,5 +1,5 @@
 ---
-title: "final project"
+title: "Assessing Bay Area Housing and Income Equity and Demographics"
 author: "Bella Raja"
 output: html_document
 ---
@@ -29,6 +29,14 @@ Sys.getenv("ffe5c482aad3c87fd918ba8a6bd5967ae4228456")
 
 
 
+In this project, I wanted to analyze migration patterns in the Bay Area which led me to questions of housing and hosuing prices as related to income concentration. 
+I also wanted to assess demographics in the Bay Area and examine different equity analyses and indices of segregation.
+Finally, I related all of these contemporary findings to the legacy of historic redlining and economic risk "grades" given to different Bay Area regions. 
+
+
+
+## Bay Area Migration - 2019
+
 
 ```{r}
 acs_vars_2019_5yr <-
@@ -38,8 +46,6 @@ acs_vars_2019_5yr <-
   )
 ```
 
-
-Bay Area Migration - 2019
 
 ```{r}
 acs_vars_2019_1yr <-
@@ -69,7 +75,7 @@ bay_mobility_current_19 <-
   ) %>% 
   select(-variable)
 ```
-Mobility in Bay Area
+
 ```{r}
 bay_mobility_current_19 <- 
   getCensus(
@@ -111,8 +117,10 @@ bay_mobility_current_19 <-
   filter(!is.na(income)) %>% 
   group_by(mobility, income) %>% 
   summarize(estimate = sum(estimate))
+
+#Mobility in Bay Area
 ```
-Inflow since last year
+
 ```{r}
 bay_mobility_lastyear_19 <- 
   getCensus(
@@ -134,9 +142,9 @@ bay_mobility_lastyear_19 <-
     by = c("variable" = "name")
   ) %>% 
   select(-variable)
+#Inflow since last year
 ```
 
-outflow
 ```{r}
 bay_mobility_lastyear_19 <- 
   getCensus(
@@ -178,9 +186,10 @@ bay_mobility_lastyear_19 <-
   filter(!is.na(income)) %>% 
   group_by(mobility, income) %>% 
   summarize(estimate = sum(estimate))
+#outflow
 ```
 
-total pop in 2018
+
 ```{r}
 bay_mobility_current_18 <- 
   getCensus(
@@ -218,9 +227,10 @@ bay_mobility_current_18 <-
   filter(!is.na(income)) %>% 
   group_by(mobility, income) %>% 
   summarize(estimate = sum(estimate))
+#total pop 2018
 ```
 
-flow
+
 ```{r}
 bay_flows_19 <-
   rbind(
@@ -273,17 +283,6 @@ bay_inflow <- get_flows(
 # finding inflows again but this time using tidycensus flows function
 ```
 
-Bay Area Inflow Regions - 2019
-```{r}
-bay_inflow  %>%
-  slice_max(estimate, n = 30) %>%
-  mutate(weight = estimate / 500) %>%
-  mapdeck(token = token) %>%
-  add_arc(origin = "centroid2",
-          destination = "centroid1",
-          stroke_width = "weight",
-          update_view = FALSE) 
-```
 The arcs show where people have moved from into the Bay Area in 2019. 
 
 ```{r}
@@ -299,7 +298,18 @@ bay_outflow <- get_flows(
   na.omit() %>%
   arrange(desc(estimate))
 ```
+Bay Area Inflow Regions - 2019                     
+```{r}
+bay_inflow  %>%
+  slice_max(estimate, n = 30) %>%
+  mutate(weight = estimate / 500) %>%
+  mapdeck(token = token) %>%
+  add_arc(origin = "centroid2",
+          destination = "centroid1",
+          stroke_width = "weight")
+```
 
+Bay Area Outflow Regions - 2019
 ```{r}
 bay_outflow  %>%
   slice_max(estimate, n = 30) %>%
@@ -307,12 +317,13 @@ bay_outflow  %>%
   mapdeck(token = token) %>%
   add_arc(origin = "centroid2",
           destination = "centroid1",
-          stroke_width = "weight",
-          update_view = FALSE) 
-```
-The arcs show where people have moved to from the Bay Area in 2019. 
+          stroke_width = "weight")
 
-Housing Costs in the Bay Area
+
+```
+The arcs show where people have moved to and from the Bay Area in 2019. 
+
+## Housing Costs in the Bay Area
 ```{r}
 housing_value <- get_acs(
   geography = "county",
@@ -322,8 +333,7 @@ housing_value <- get_acs(
   variables = "B25077_001",
   survey = "acs1",
   geometry = TRUE,
-  resolution = "20m",
-  key = "ffe5c482aad3c87fd918ba8a6bd5967ae4228456"
+  resolution = "20m"
 )
 ```
 
@@ -352,8 +362,7 @@ This is a map of the median home values in the Bay Area counties 2019. It shows 
 
 This is interesting to compare to the inflow and outflow maps, the regions with the most inflows and outflows such as San Francisco and San Jose are also some of the most expensive places to have homes on average.
 
-
-Racial Equity Analysis in the Bay Area
+## Racial Equity Analysis in the Bay Area for Income and Housing
 
 ```{r}
 census_race_categories <- 
@@ -437,37 +446,6 @@ bay_income1 <- get_acs(
 ```
 
 ```{r}
-bay_income <-
-  getCensus(
-    name = "acs/acs5",
-    vintage = 2019,
-    region = "county:001,013,041,055,075,081,085,095,097",
-    regionin = "state:06",
-    vars = "group(B19001)"
-  ) %>%
-  select(!c(GEO_ID,state,NAME) & !ends_with(c("EA","MA","M"))) %>%
-  pivot_longer(
-    ends_with("E"),
-    names_to = "name",
-    values_to = "estimate"
-  ) %>%
-  left_join(
-    acs_vars_2019_5yr %>% 
-      select(name, label)
-  ) %>% 
-  select(-name) %>% 
-  separate(
-    label,
-    into = c(NA,NA,"income"),
-    sep = "!!"
-  ) %>% 
-  filter(!is.na(income)) 
-
-
-
-```
-
-```{r}
 income_pal <- colorNumeric(
   palette = "plasma",
   domain = bay_income1$estimate
@@ -490,13 +468,9 @@ leaflet() %>%
     title = "Bay Area Median Yearly Income ($)"
   )
 ```
-Inequality
-```{r}
-Gini(bay_income)
-```
+The median yearly income by county also corresponds similarly with the median housing prices by county. 
 
 
-Mobility by Race
 ```{r}
 bay_mobility_race <-
   1:7 %>% 
@@ -578,7 +552,10 @@ bay_income_race %>%
     )
   )
 ```
-This plot shows the proportions of Bay Area Household Income by Race with the American Communities Survey (ACS) 5 year data. 
+
+
+
+This plot shows the proportions of Bay Area Household Income by Race with the American Communities Survey (ACS) 5 year data. This plot shows that "White alone households" have the highest proportion of income, then "Asian Alone" and the lowest proportions are "American Indian and Alaska Native Alone" and "Native Hawaiian and Other Pacific Islander Alone."  
 
 ```{r}
 
@@ -613,11 +590,11 @@ bay_mobility_race %>%
     )
   )
 ```
+This plot shows the proportions of Bay Area Household Mobility by Race with the American Communities Survey (ACS) 5 year data. The "mobility" is determined by the individual income for a current residence. 
 *I'm not sure why all of these proportions are the same when the data was different, I am going to wait to do a full analysis until I think the plot is correct 
 
 
-
-Bay Area Race Demographics by Census County
+## Bay Area Racial Demographics by Census County
 ```{r}
 
 
@@ -640,9 +617,6 @@ bay_race <- get_acs(
 bay_race_percent <- bay_race %>%
   mutate(percent = 100 * (estimate / summary_est))
 
-
-
-view(bay_race)
 ```
 ```{r}
 groups <- unique(bay_race$variable)
@@ -677,7 +651,7 @@ tm_shape(background_tracts,
 ```
 
 
-Multi-Group Statistical Segregation Across Bay Area Counties
+## Multi-Group Statistical Segregation Across Bay Area Counties
 ```{r}
 mutual_within(
   data = bay_race,
@@ -693,7 +667,7 @@ M is the within-category M, and p is the proportion of the category. Multiplying
 
 *the results seem a bit off, I'm not sure how to fix it right now, but once I do, I will complete an analysis of the results
 
-Historic Redlining in the Bay Area
+## Historic Redlining in the Bay Area
 
 As a trade-off for the New Deal policies and social programs to address the Great Depression in the U.S., the Home Owners' Loan Corporation (HOLC) was allowed to make maps that "graded" regions into four categories ('A', 'B', 'C', and 'D'). These grading schemes were on a large part build on the racial and economic demographics of the regions. The red markers, for 'high risk,' is where we get the term "redlining."
 These redlining boundaries and categroizations for which neighborhoods were deemed 'high-risk' for loans or other programs has deeply impacted the Bay Area and the broader U.S. 
@@ -783,7 +757,7 @@ HOLC only assessed San Francisco County, the "Oakland Area" (parts of Alameda an
 
 When looking at the maps of the HOLC grades from 1937, we can see many similarities to the contemporary racial and demographical information. About 80 years later, and the policy choices of late 1930s' legacy is very much a reality that impact the quality of life and discrimination faced by many in the Bay Area.  
 
+Especially when considering the higher concentration of white households in these "A" grade neighborhoods still today being correlated with high concentrations of wealth, we can still see the impacts of these institutionalized forms of discrimination today.
 
 
-## R Markdown
 
