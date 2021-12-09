@@ -1368,6 +1368,172 @@ ggplot() +
     scale_color_brewer(type = "div", palette = 4) + 
     scale_fill_brewer(type = "div", palette = 4)
 ```
+
+```{r}
+years <- 2005:2019
+names(years) <- years
+
+al_income <- map_dfr(years, ~{
+  get_acs(
+    geography = "county",
+    variables = "B06011_001",
+    state = "CA",
+    county = "Alameda",
+    year = .x,
+    survey = "acs1"
+  )
+}, .id = "year")
+```
+```{r}
+cc_income <- map_dfr(years, ~{
+  get_acs(
+    geography = "county",
+    variables = "B06011_001",
+    state = "CA",
+    county = "Contra Costa",
+    year = .x,
+    survey = "acs1"
+  )
+}, .id = "year")
+```
+
+```{r}
+ma_income <- map_dfr(years, ~{
+  get_acs(
+    geography = "county",
+    variables = "B06011_001",
+    state = "CA",
+    county = "Marin",
+    year = .x,
+    survey = "acs1"
+  )
+}, .id = "year")
+```
+
+```{r}
+na_income <- map_dfr(years, ~{
+  get_acs(
+    geography = "county",
+    variables = "B06011_001",
+    state = "CA",
+    county = "Napa",
+    year = .x,
+    survey = "acs1"
+  )
+}, .id = "year")
+```
+
+```{r}
+sf_income <- map_dfr(years, ~{
+  get_acs(
+    geography = "county",
+    variables = "B06011_001",
+    state = "CA",
+    county = "San Francisco",
+    year = .x,
+    survey = "acs1"
+  )
+}, .id = "year")
+```
+
+```{r}
+sm_income <- map_dfr(years, ~{
+  get_acs(
+    geography = "county",
+    variables = "B06011_001",
+    state = "CA",
+    county = "San Mateo",
+    year = .x,
+    survey = "acs1"
+  )
+}, .id = "year")
+```
+
+```{r}
+sc_income <- map_dfr(years, ~{
+  get_acs(
+    geography = "county",
+    variables = "B06011_001",
+    state = "CA",
+    county = "Santa Clara",
+    year = .x,
+    survey = "acs1"
+  )
+}, .id = "year")
+```
+
+```{r}
+sol_income <- map_dfr(years, ~{
+  get_acs(
+    geography = "county",
+    variables = "B06011_001",
+    state = "CA",
+    county = "Solano",
+    year = .x,
+    survey = "acs1"
+  )
+}, .id = "year")
+```
+
+```{r}
+so_income <- map_dfr(years, ~{
+  get_acs(
+    geography = "county",
+    variables = "B06011_001",
+    state = "CA",
+    county = "Sonoma",
+    year = .x,
+    survey = "acs1"
+  )
+}, .id = "year")
+```
+
+
+```{r}
+ggplot(show.legend = TRUE) +
+  geom_point(data = al_income, aes(x = year, y = estimate, group = 1), color = "red") + 
+  geom_line(data = al_income, aes(x = year, y = estimate, group = 1), color = "red") + 
+  geom_point(data = cc_income, aes(x = year, y = estimate, group = 1), color = "blue") +
+  geom_line(data = cc_income, aes(x = year, y = estimate, group = 1), color = "blue") +
+  geom_point(data = ma_income, aes(x = year, y = estimate, group = 1), color = "black") +
+  geom_line(data = ma_income, aes(x = year, y = estimate, group = 1), color = "black") +
+  geom_point(data = na_income, aes(x = year, y = estimate, group = 1), color = "purple") +
+  geom_line(data = na_income, aes(x = year, y = estimate, group = 1), color = "purple") +
+  geom_point(data = sf_income, aes(x = year, y = estimate, group = 1), color = "green") +
+  geom_line(data = sf_income, aes(x = year, y = estimate, group = 1), color = "green") +
+  geom_point(data = sm_income, aes(x = year, y = estimate, group = 1), color = "orange") +
+  geom_line(data = sm_income, aes(x = year, y = estimate, group = 1), color = "orange") +
+  geom_point(data = sc_income, aes(x = year, y = estimate, group = 1), color = "yellow") +
+  geom_line(data = sc_income, aes(x = year, y = estimate, group = 1), color = "yellow") +
+  geom_point(data = sol_income, aes(x = year, y = estimate, group = 1), color = "pink") +
+  geom_line(data = sol_income, aes(x = year, y = estimate, group = 1), color = "pink") +
+  geom_point(data = so_income, aes(x = year, y = estimate, group = 1), color = "brown")+
+  geom_line(data = so_income, aes(x = year, y = estimate, group = 1), color = "brown") 
+
+```
+```{r}
+ggplot() +
+  geom_point(data= al_income, aes(x = year, y = estimate, group = 1, color = 'red')) +
+  geom_line(data= al_income, aes(x = year, y = estimate, group = 1, color = 'red'))+ 
+```
+
+```{r}
+ggplot(al_income, aes(x = year, y = estimate, group = 1, color = 'red')) +
+  geom_line() + 
+  geom_point() 
+
+
+```
+
+
+```{r}
+ggplot() +
+  geom_point(data = al_income, aes(x = year, y = estimate), color = "red") 
+  geom_point(data = al_value, aes(x = year, y = estimate), color = "blue")
+```
+
+
+
 ## R Markdown
 
 This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
