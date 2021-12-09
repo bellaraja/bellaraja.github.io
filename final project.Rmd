@@ -378,7 +378,7 @@ This is a map of the median home values in the Bay Area counties 2019. It shows 
 
 This is interesting to compare to the inflow and outflow maps, the regions with the most inflows and outflows such as San Francisco and San Jose are also some of the most expensive places to have homes on average.
 
-## Racial Equity Analysis in the Bay Area for Income and Housing
+## Assesing Bay Area Income and Housing
 
 ```{r}
 census_race_categories <- 
@@ -555,7 +555,12 @@ ggplot() +
   theme(legend.title = element_text(face="bold"))+
   ggtitle("Estimate Median Annual Income ($) for \nBay Area Counties from 2005-2019")
 ```
+If we look at the increase in median home prices according to the ACS 1 year survey, we can see that housing prices have increased with median income levels for each county. 
+The years after the 2008 Housing and Financial Crisis marked a significant dip in both sets of data, but after 2012 both values began to rise and kept rising. 
 
+##Racial Equity Analysis 
+Racial disparities are a painful reality as a result of systemic and historic inequities and discrimination. 
+Equity analyses are important to conduct in order for policy makers, researchers, and community organizers to highlight communities that are under-served and allocate policies, funding, or advocacy to help address these inequities. 
 
 ```{r}
 bay_mobility_race <-
@@ -676,7 +681,7 @@ bay_mobility_race %>%
     )
   )
 ```
-This plot shows the proportions of Bay Area Household Mobility by Race with the American Communities Survey (ACS) 5 year data. The "mobility" is determined by the individual income for a current residence. 
+This plot shows the proportions of Bay Area Household Mobility by Race with the American Communities Survey (ACS) 5 year data. The "mobility" is determined by the individual income for a current residence. ???
 
 
 ## Bay Area Racial Demographics by Census County
@@ -832,8 +837,149 @@ When looking at the maps of the HOLC grades from 1937, we can see many similarit
 
 Especially when considering the higher concentration of white households in these "A" grade neighborhoods still today being correlated with high concentrations of wealth, we can still see the impacts of these institutionalized forms of discrimination today.
 
+### Bay Area Racial Demographics
+```{r}
 
 
+bay_race <- get_acs(
+  geography = "tract",
+  year = 2019,
+  state = "CA",
+  county = c("Alameda","Contra Costa", "Marin", "Napa", "San Francisco", "San Mateo", "Santa Clara", "Solano", "Sonoma"),
+  variables = c(White = "B03002_003",
+                Black = "B03002_004",
+                Native = "B03002_005",
+                Asian = "B03002_006",
+                Hispanic = "B03002_012"),
+  summary_var = "B03002_001",
+  geometry = TRUE,
+  key = "ffe5c482aad3c87fd918ba8a6bd5967ae4228456"
+) 
+
+
+bay_race_percent <- bay_race %>%
+  mutate(percent = 100 * (estimate / summary_est))
+
+
+
+view(bay_race)
+```
+
+```{r}
+bay_asian <- filter(bay_race_percent, variable == "Asian")
+bay_black <- filter(bay_race_percent, variable == "Black")
+bay_hisp <- filter(bay_race_percent, variable == "Hispanic")
+bay_nat_am <- filter(bay_race_percent, variable == "Native")
+bay_white <- filter(bay_race_percent, variable == "White")
+```
+
+
+```{r}
+bay_asian_pal <- colorNumeric(
+  palette = "Reds",
+  domain = bay_asian$percent
+    
+)
+
+leaflet() %>% 
+  addProviderTiles(providers$CartoDB.Positron) %>% 
+  addPolygons(
+    data = bay_asian,
+    fillColor = ~bay_asian_pal(percent),
+    color = "white",
+    weight = 0.5,
+    fillOpacity = 0.5,
+    label = ~percent
+  ) %>% addPolygons(
+    data = holc_areas,
+    color = "white",
+  label = ~holc_grade
+  )
+```
+
+```{r}
+bay_black_pal <- colorNumeric(
+  palette = "Reds",
+  domain = bay_black$percent
+    
+)
+
+leaflet() %>% 
+  addProviderTiles(providers$CartoDB.Positron) %>% 
+  addPolygons(
+    data = bay_black,
+    fillColor = ~bay_black_pal(percent),
+    color = "white",
+    weight = 0.5,
+    fillOpacity = 0.5,
+    label = ~percent
+  )
+```
+
+
+```{r}
+bay_hisp_pal <- colorNumeric(
+  palette = "Reds",
+  domain = bay_hisp$percent
+    
+)
+
+leaflet() %>% 
+  addProviderTiles(providers$CartoDB.Positron) %>% 
+  addPolygons(
+    data = bay_hisp,
+    fillColor = ~bay_hisp_pal(percent),
+    color = "white",
+    weight = 0.5,
+    fillOpacity = 0.5,
+    label = ~percent
+  )
+```
+
+
+
+```{r}
+bay_nat_am_pal <- colorNumeric(
+  palette = "Reds",
+  domain = bay_nat_am$percent
+    
+)
+
+leaflet() %>% 
+  addProviderTiles(providers$CartoDB.Positron) %>% 
+  addPolygons(
+    data = bay_nat_am,
+    fillColor = ~bay_nat_am_pal(percent),
+    color = "white",
+    weight = 0.5,
+    fillOpacity = 0.5,
+    label = ~percent
+  )
+```
+
+
+```{r}
+bay_white_pal <- colorNumeric(
+  palette = "Reds",
+  domain = bay_white$percent
+    
+)
+
+leaflet() %>% 
+  addProviderTiles(providers$CartoDB.Positron) %>% 
+  addPolygons(
+    data = bay_white,
+    fillColor = ~bay_white_pal(percent),
+    color = "white",
+    weight = 0.5,
+    fillOpacity = 0.5,
+    label = ~percent
+  )
+```
+
+
+
+???
 ```{r}
 acs_vars_1937_5yr <-
   listCensusMetadata(
