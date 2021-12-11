@@ -29,22 +29,95 @@ Sys.getenv("ffe5c482aad3c87fd918ba8a6bd5967ae4228456")
 
 
 
-In this project, I wanted to analyze migration patterns in the Bay Area which led me to questions of housing and hosuing prices as related to income concentration. 
+In this project, I wanted to analyze migration patterns in the Bay Area which led me to questions of housing and housing prices as related to income concentration. 
 I also wanted to assess demographics in the Bay Area and examine different equity analyses and indices of segregation.
 Finally, I related all of these contemporary findings to the legacy of historic redlining and economic risk "grades" given to different Bay Area regions. 
+
+
+## Datasets for this project
+
+For this project, I use various different types of census data as well as data from the 1937 Home Owners' Loan Corporation grading scheme of American neighborhoods.
+
+Every year, the U.S. Census Bureau puts out and publishes the American Communities Survey (ACS) 1-year estimates for geographic areas with populations of 65,000 or more. This data is taken from random households and ask more detailed questions than the decennial census because its purpose is to track various economic and social changes rather than broad population counts. The ACS 5-year estimates are a bit more statistically reliable than the 1-year estimates because they gather data over consecutive years and also have larger sample sizes.
+
+I use both American Communities Survey 1-year and 5-year data. In particular, 1-year estimates are helpful for understanding quickly changing geographic or demographic data, such as mobility or in-flow/out-flow data. 5-year estimates can provide interesting insights into broader trends in areas such as racial demographics or home values and annual income. Public Use Microdata Sample (PUMS) files are also included in these ACS reports. The PUMS data provides even more specific and granular data from individuals and households. This data is helpful for some of the more specific variables I measure, such as households with income less than 100K. 
+
+
 
 
 
 ## Bay Area Migration - 2019
 
+```{r}
+token <- "pk.eyJ1IjoiYmVsbGFyIiwiYSI6ImNrd3JjNmFkOTB2MmQycWp2Mm42OXc5dXgifQ.pttZ3IYhuP9cq19jSqvIzA"
+
+bay_inflow <- get_flows(
+  geography = "county",
+  state = "CA",
+  county = c("Alameda","Contra Costa", "Marin", "Napa", "San Francisco", "San Mateo", "Santa Clara", "Solano", "Sonoma"),
+  geometry = TRUE,
+  year = 2019
+) %>%
+  filter(variable == "MOVEDIN") %>%
+  na.omit() %>%
+  arrange(desc(estimate))
+
+# finding inflows again but this time using tidycensus flows function
+```
+
+
+
+
 
 ```{r}
-acs_vars_2019_5yr <-
-  listCensusMetadata(
-    name = "2019/acs/acs5",
-    type = "variables"
-  )
+bay_outflow <- get_flows(
+  geography = "county",
+  year = 2019,
+  state = "CA",
+  county = c("Alameda","Contra Costa", "Marin", "Napa", "San Francisco", "San Mateo", "Santa Clara", "Solano", "Sonoma"),
+  geometry = TRUE,
+  key = "ffe5c482aad3c87fd918ba8a6bd5967ae4228456"
+) %>%
+  filter(variable == "MOVEDOUT") %>%
+  na.omit() %>%
+  arrange(desc(estimate))
+view(bay_outflow)
 ```
+These 3D Maps show the inflow and outflow for the Bay Area. 
+The arcs show the top 50 inflow to and outflow from the Bay Area locations.
+To navigate these maps, double tap or scroll up with your mouse to zoom in and scroll down with your mouse to zoom out on particular spots. 
+
+Zoom in on the Bay Area to get a closer look at the top 50 destinations and places of departure.
+
+Bay Area Inflow Locations - 2019                     
+```{r}
+bay_inflow_map <- bay_inflow  %>%
+  slice_max(estimate, n = 50) %>%
+  mutate(weight = estimate / 500) %>%
+  mapdeck(token = token) %>%
+  add_arc(origin = "centroid2",
+          destination = "centroid1",
+          stroke_width = "weight")
+bay_inflow_map
+```
+This map uses the 2019 ACS 1 year estimates to show the inflow of people moving to the Bay Area from the top 50 inflow origin locations.
+
+
+Bay Area Outflow Locations- 2019
+```{r}
+bay_outflow_map <- bay_outflow  %>%
+  slice_max(estimate, n = 50) %>%
+  mutate(weight = estimate / 500) %>%
+  mapdeck(token = token) %>%
+  add_arc(origin = "centroid2",
+          destination = "centroid1",
+          stroke_width = "weight")
+
+bay_outflow_map 
+```
+This map uses the same data as the previous map to show the top 50 outflow locations for people moving out of the Bay Area.
+
+In comparing these two maps, a lot of the 2019 inflow and outflow locations are very similar such as moving to or from San Francisco. There is more geographic distance in the inflow destinations, with more people moving from big cities like New York and Chicago. Whereas, the outflow destinations are closer to the Bay Area, with people moving to places like cities in Southern California or Las Vegas in Nevada (where housing prices and taxes are much lower but still close enough to potentially work remotely or stay near family).
 
 
 ```{r, progress_bar = F }
@@ -234,7 +307,7 @@ bay_mobility_current_18 <-
 #total pop 2018
 ```
 
-
+#Bay Area Flows by Income Tier 
 ```{r}
 bay_flows_19 <-
   rbind(
@@ -270,76 +343,12 @@ bay_flows_19 <-
 bay_flows_19
 ```
 
+This table shows inflow and outflow across the Bay Area counties based on income tiers. This data comes from the ACS 1-year estimates of Geographic Mobility from 2018 to 2019. 
+Those with a higher income have more inflow than outflow to the Bay Area, and those with lower incomes have more outflow than inflow to the Bay Area. With increasing housing costs and taxes, the Bay Area is a very expensive place to live. 
 
 
 
-```{r}
-token <- "pk.eyJ1IjoiYmVsbGFyIiwiYSI6ImNrd3JjNmFkOTB2MmQycWp2Mm42OXc5dXgifQ.pttZ3IYhuP9cq19jSqvIzA"
-
-bay_inflow <- get_flows(
-  geography = "county",
-  state = "CA",
-  county = c("Alameda","Contra Costa", "Marin", "Napa", "San Francisco", "San Mateo", "Santa Clara", "Solano", "Sonoma"),
-  geometry = TRUE,
-  year = 2019
-) %>%
-  filter(variable == "MOVEDIN") %>%
-  na.omit() %>%
-  arrange(desc(estimate))
-
-# finding inflows again but this time using tidycensus flows function
-```
-
-The arcs show where people have moved from into the Bay Area in 2019. 
-
-
-
-```{r}
-bay_outflow <- get_flows(
-  geography = "county",
-  year = 2019,
-  state = "CA",
-  county = c("Alameda","Contra Costa", "Marin", "Napa", "San Francisco", "San Mateo", "Santa Clara", "Solano", "Sonoma"),
-  geometry = TRUE,
-  key = "ffe5c482aad3c87fd918ba8a6bd5967ae4228456"
-) %>%
-  filter(variable == "MOVEDOUT") %>%
-  na.omit() %>%
-  arrange(desc(estimate))
-view(bay_outflow)
-```
-These 3D Maps show the inflow and outflow for the Bay Area. 
-I am showing the top 50 regions that are the inflow and outflow origins and destinations
-To navigate these maps....
-
-Bay Area Inflow Regions - 2019                     
-```{r}
-bay_inflow  %>%
-  slice_max(estimate, n = 50) %>%
-  mutate(weight = estimate / 500) %>%
-  mapdeck(token = token) %>%
-  add_arc(origin = "centroid2",
-          destination = "centroid1",
-          stroke_width = "weight")
-```
-This map shows the ...
-
-
-Bay Area Outflow Regions - 2019
-```{r}
-bay_outflow  %>%
-  slice_max(estimate, n = 50) %>%
-  mutate(weight = estimate / 500) %>%
-  mapdeck(token = token) %>%
-  add_arc(origin = "centroid2",
-          destination = "centroid1",
-          stroke_width = "weight")
-
-
-```
-The arcs show where people have moved to and from the Bay Area in 2019. 
-
-## Housing Costs in the Bay Area
+## Assesing Bay Area Income and Housing
 ```{r}
 housing_value <- get_acs(
   geography = "county",
@@ -352,7 +361,7 @@ housing_value <- get_acs(
   resolution = "20m"
 )
 ```
-
+Median Home Values by Bay Area County - 2019
 ```{r}
 housing_pal <- colorNumeric(
   palette = "plasma",
@@ -371,14 +380,131 @@ leaflet() %>%
     position = "bottomright",
     pal = housing_pal,
     values = housing_value$estimate,
-    title = "Median Home Value ($)"
+    title = "Median Home Value ($) - 2019"
   )
 ```
-This is a map of the median home values in the Bay Area counties 2019. It shows San Francisco County ($1,233,600) with the highest median home values, then Santa Clara ($1,135,600), Marin ($1,078,800), Alameda ($882,100), Contra Costa ($687,600), Napa ($670,000), Sonoma ($664,600), and Solano ($460,500).
+This is a map of the median home values in the Bay Area counties 2019 using the ACS 1 year estimates. It shows San Francisco County ($1,233,600) with the highest median home values, then Santa Clara ($1,135,600), Marin ($1,078,800), Alameda ($882,100), Contra Costa ($687,600), Napa ($670,000), Sonoma ($664,600), and Solano ($460,500).
 
 This is interesting to compare to the inflow and outflow maps, the regions with the most inflows and outflows such as San Francisco and San Jose are also some of the most expensive places to have homes on average.
 
-## Assesing Bay Area Income and Housing
+```{r}
+bay_housing_income_tract <- 
+  getCensus(
+    name = "acs/acs5",
+    vintage = 2019,
+    region = "tract:*",
+    regionin = "state:06+county:001,013,041,055,075,081,085,095,097",
+    vars = c(
+      "B06011_001E",
+      "B25077_001E")
+      ) %>% 
+  transmute(
+    tract = paste0(state, county, tract),
+    house_value = B25077_001E,
+    income = B06011_001E 
+  ) %>% 
+  filter(
+    !is.na(house_value), 
+    !is.na(income)
+  )
+    
+```
+
+```{r, progress_bar = F}
+years <- 2005:2019
+names(years) <- years
+
+bay_value <- map_dfr(years, ~{
+  get_acs(
+    geography = "county",
+    variables = "B25077_001",
+    state = "CA",
+    county = c("Alameda","Contra Costa", "Marin", "Napa", "San Francisco", "San Mateo", "Santa Clara", "Solano", "Sonoma"),
+    year = .x,
+    survey = "acs1"
+  )
+}, .id = "year") %>% mutate("County" = NAME, ) %>% mutate("Median_Home_Value" = estimate)
+```
+
+```{r}
+ggplot() +
+  geom_point(data = bay_value, aes(x = year, y = Median_Home_Value, group = 1, color = County)) +
+  theme(legend.title = element_text(face="bold"))+
+  ggtitle("Estimate Median Home Values ($) for \nBay Area Counties from 2005-2019")
+
+
+```
+Look at the plot above to see the changes in Median Home Value across the Bay Area Counties from 2005 to 2019. 
+You can see the dip in values from the 2008 housing and financial crisis, but after around 2012 median housing prices began to increase quickly and continue to increase.
+
+```{r, progress_bar = FALSE}
+bay_income1 <- get_acs(
+  geography = "county",
+  year = 2019,
+  state = "CA",
+  county = c("Alameda","Contra Costa", "Marin", "Napa", "San Francisco", "San Mateo", "Santa Clara", "Solano", "Sonoma"),
+  variable = "B06011_001E",
+  geometry = TRUE
+) 
+
+```
+
+```{r}
+income_pal <- colorNumeric(
+  palette = "plasma",
+  domain = bay_income1$estimate
+)
+
+leaflet() %>% 
+  addProviderTiles(providers$CartoDB.Positron) %>% 
+  addPolygons(
+    data = bay_income1,
+    fillColor = ~income_pal(estimate),
+    color = "white",
+    weight = 0.5,
+    fillOpacity = 0.5,
+    label = ~estimate
+  ) %>%
+  addLegend(
+    position = "bottomright",
+    pal = income_pal,
+    values = bay_income1$estimate,
+    title = "Bay Area Median Yearly Income ($) - 2019"
+  )
+```
+
+
+```{r}
+bay_income <- map_dfr(years, ~{
+  get_acs(
+    geography = "county",
+    variables = "B06011_001",
+    state = "CA",
+    county = c("Alameda","Contra Costa", "Marin", "Napa", "San Francisco", "San Mateo", "Santa Clara", "Solano", "Sonoma"),
+    year = .x,
+    survey = "acs1"
+  )
+}, .id = "year") %>% mutate("County" = NAME, ) %>% mutate("Median_Income" = estimate)
+```
+
+
+```{r}
+ggplot() +
+  geom_point(data = bay_income, aes(x = year, y = Median_Income, group = 1, color = County)) +
+  theme(legend.title = element_text(face="bold"))+
+  ggtitle("Estimate Median Annual Income ($) for \nBay Area Counties from 2005-2019")
+```
+If we look at the increase in median home prices according to the ACS 1 year survey, we can see that housing prices have increased with median income levels for each county. 
+The years after the 2008 Housing and Financial Crisis marked a significant dip in both sets of data, but after 2012 both values began to rise and kept rising. 
+
+
+```{r}
+acs_vars_2019_5yr <-
+  listCensusMetadata(
+    name = "2019/acs/acs5",
+    type = "variables"
+  )
+```
 
 ```{r}
 census_race_categories <- 
@@ -695,7 +821,7 @@ bay_race <- get_acs(
   county = c("Alameda","Contra Costa", "Marin", "Napa", "San Francisco", "San Mateo", "Santa Clara", "Solano", "Sonoma"),
   variables = c(White = "B03002_003",
                 Black = "B03002_004",
-                Native = "B03002_005",
+                Native_American = "B03002_005",
                 Asian = "B03002_006",
                 Hispanic = "B03002_012"),
   summary_var = "B03002_001",
@@ -888,18 +1014,46 @@ leaflet() %>%
     fillColor = ~bay_asian_pal(percent),
     color = "white",
     weight = 0.5,
-    fillOpacity = 0.5,
+    fillOpacity = 3,
     label = ~percent
   ) %>% addPolygons(
     data = holc_areas,
-    color = "white",
-  label = ~holc_grade
+    color = none,
+    weight = 0.25,
+    fillOpacity = 0,
+    label = ~holc_grade
+  
   )
 ```
 
 ```{r}
-bay_black_pal <- colorNumeric(
+bay_asian_pal <- colorNumeric(
   palette = "Reds",
+  domain = bay_asian$percent
+    
+)
+
+leaflet() %>% 
+  addProviderTiles(providers$CartoDB.Positron) %>% 
+  addPolygons(
+    data = bay_asian,
+    fillColor = ~bay_asian_pal(percent),
+    color = "white",
+    weight = 0.5,
+    fillOpacity = 0.5,
+    label = ~percent
+  ) %>% addPolygons(
+    data = holc_areas,
+    label = ~holc_grade
+  )
+```
+
+
+
+
+```{r}
+bay_black_pal <- colorNumeric(
+  palette = "Blues",
   domain = bay_black$percent
     
 )
@@ -911,7 +1065,7 @@ leaflet() %>%
     fillColor = ~bay_black_pal(percent),
     color = "white",
     weight = 0.5,
-    fillOpacity = 0.5,
+    fillOpacity = 3,
     label = ~percent
   )
 ```
@@ -978,47 +1132,140 @@ leaflet() %>%
 ```
 
 
-
-???
 ```{r}
-acs_vars_1937_5yr <-
-  listCensusMetadata(
-    name = "2014/acs/acs5",
-    type = "variables"
+pums_2019_1yr <- getCensus(
+  name = "acs/acs1/pums",
+  vintage = 2019,
+  region = "public use microdata area:*", 
+  regionin = "state:06",
+  vars = c(
+    "SERIALNO",
+    "SPORDER",
+    "PWGTP",
+    "WGTP",
+    "NP",
+    "HHL",
+    "HINCP",
+    "TEN"
   )
+)
+```
+
+
+```{r}
+
+ca_pumas <-
+  pumas("CA", cb = T, progress_bar = F)
+
+bay_county_names <-
+  c(
+    "Alameda",
+    "Contra Costa",
+    "Marin",
+    "Napa",
+    "San Francisco",
+    "San Mateo",
+    "Santa Clara",
+    "Solano",
+    "Sonoma"
+  )
+
+bay_counties <-
+  counties("CA", cb = T, progress_bar = F) %>%
+  filter(NAME %in% bay_county_names)
+
+bay_pumas <-
+  ca_pumas %>% 
+  st_centroid() %>% 
+  .[bay_counties, ] %>% 
+  st_drop_geometry() %>% 
+  left_join(ca_pumas %>% select(GEOID10)) %>% 
+  st_as_sf()
+
+bay_pums <-
+  pums_2019_1yr %>% 
+  mutate(
+    PUMA = str_pad(public_use_microdata_area,5,"left","0")
+  ) %>% 
+  filter(PUMA %in% bay_pumas$PUMACE10)
 ```
 
 ```{r}
-bay_income_race_193 <-
-  1:7 %>% 
-  map_dfr(function(x){
-    getCensus(
-      name = "acs/acs5",
-      vintage = 2019,
-      region = "county:001,013,041,055,075,081,085,095,097",
-      regionin = "state:06",
-      vars = paste0("group(B19001",LETTERS[x],")")
-    ) %>%
-      select(!c(GEO_ID,state,NAME) & !ends_with(c("EA","MA","M"))) %>%
-      pivot_longer(
-        ends_with("E"),
-        names_to = "name",
-        values_to = "estimate"
-      ) %>%
-      left_join(
-        acs_vars_2019_5yr %>% 
-          select(name, label)
-      ) %>% 
-      select(-name) %>% 
-      separate(
-        label,
-        into = c(NA,NA,"income"),
-        sep = "!!"
-      ) %>% 
-      filter(!is.na(income)) %>% 
-      mutate(race = census_race_categories[x])
-  })
+bay_pums_lowinc <-
+  bay_pums %>% 
+  filter(!duplicated(SERIALNO)) %>% 
+  mutate(
+    WGTP = as.numeric(WGTP),
+    lowinc = ifelse(
+        (HINCP < 100000),
+      WGTP,
+      0
+    )
+  ) %>% 
+  group_by(PUMA) %>% 
+  summarize(
+    perc_lowinc =
+      sum(lowinc, na.rm =T)/sum(WGTP, na.rm = T)*100
+  ) %>% 
+  left_join(
+    bay_pumas %>% 
+      select(PUMACE10),
+    by = c("PUMA" = "PUMACE10")
+  ) %>% 
+  st_as_sf()
 ```
+
+
+Map of Percent of Households in each PUMA (census microdata) that have an annual income of less than 100K.
+```{r}
+pums_pal <- colorNumeric(
+  palette = "Blues",
+  domain = bay_pums_lowinc$perc_lowinc
+)
+
+lowinc_map <- leaflet() %>%
+  addTiles() %>% 
+  addPolygons(
+    data = bay_pums_lowinc,
+    fillColor = ~pums_pal(perc_lowinc),
+    color = "white",
+    opacity = 0.5,
+    fillOpacity = 2,
+    weight = 1,
+    label = ~paste0(
+      round(perc_lowinc), 
+      "% of households making less than $100K"
+    ),
+    highlightOptions = highlightOptions(
+      weight = 2,
+      opacity = 1
+    )
+  ) %>% 
+  addLegend(
+    data = bay_pums_lowinc,
+    pal = pums_pal,
+    values = ~perc_lowinc,
+    title = "% Households making <br> less than $100K"
+  )
+
+lowinc_map
+```
+
+This map shows the incone percentage data as in the previous map as but with the HOLC 1937 gradings overlayed on the regions that were included in those redlining policies.
+Double tap on different regions to zoom-in and compare the gradings that were highly based on race and socioeconomic status in the late 1930s to the current day socio-economic breakdowns of the Bay Area.
+```{r}
+lowinc_map %>% addPolygons(
+    data = (holc_areas),
+    color = "white",
+    fillColor = FALSE,
+    fillOpacity = 0,
+    weight = 0.2,
+    opacity = 0.2,
+    label = ~holc_grade
+  ) 
+                            
+```
+
 
 
 
