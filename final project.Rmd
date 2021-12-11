@@ -498,6 +498,45 @@ If we look at the increase in median home prices according to the ACS 1 year sur
 The years after the 2008 Housing and Financial Crisis marked a significant dip in both sets of data, but after 2012 both values began to rise and kept rising. 
 
 
+## Bay Area Racial Demographics by County
+To better understand and work to address housing and income inequality it is critical to address and unpack racial disparities and inequality. Racial disparities are a painful and ever-present reality as a result of systemic and historic inequities and discrimination that are perpetuated by policies of the past and present.
+
+First lets take a look at Bay Area racial demographics by county using the census data. 
+
+```{r}
+groups <- unique(bay_race$variable)
+
+bay_points <- map_dfr(groups, ~{
+  bay_race %>%
+    filter(variable == .x) %>%
+    st_transform(26910) %>%
+    mutate(est100 = as.integer(estimate / 100)) %>%
+    st_sample(size = .$est100, exact = TRUE) %>%
+    st_sf() %>%
+    mutate(group = .x)
+}) %>%
+  slice_sample(prop = 1)
+```
+
+Dot Density Map of Concentration of Different Racial Groups in the Bay Area - 2019 (ACS)
+```{r}
+background_tracts <- filter(bay_race, variable == "White")
+
+tm_shape(background_tracts, 
+         projection = sf::st_crs(26910)) + 
+  tm_polygons(col = "white", 
+              border.col = "black",
+              size = 0.100,
+              ) + 
+  tm_shape(bay_points) +
+  tm_dots(col = "group", 
+          palette = "RdYlBu",
+          size = 0.010, 
+          title = "Census Race Groups")
+```
+
+##Racial Equity Analysis 
+Equity analyses are important to conduct in order for policy makers, researchers, and community organizers to highlight communities that are under-served and allocate policies, funding, or advocacy to help address these inequities. 
 ```{r}
 acs_vars_2019_5yr <-
   listCensusMetadata(
@@ -540,153 +579,6 @@ bay_race_tracts <-
   })
 ```
 
-```{r}
-bay_income_race <-
-  1:7 %>% 
-  map_dfr(function(x){
-    getCensus(
-      name = "acs/acs5",
-      vintage = 2019,
-      region = "county:001,013,041,055,075,081,085,095,097",
-      regionin = "state:06",
-      vars = paste0("group(B19001",LETTERS[x],")")
-    ) %>%
-      select(!c(GEO_ID,state,NAME) & !ends_with(c("EA","MA","M"))) %>%
-      pivot_longer(
-        ends_with("E"),
-        names_to = "name",
-        values_to = "estimate"
-      ) %>%
-      left_join(
-        acs_vars_2019_5yr %>% 
-          select(name, label)
-      ) %>% 
-      select(-name) %>% 
-      separate(
-        label,
-        into = c(NA,NA,"income"),
-        sep = "!!"
-      ) %>% 
-      filter(!is.na(income)) %>% 
-      mutate(race = census_race_categories[x])
-  })
-view(bay_income_race)
-```
-
-```{r progress_bar = F}
-
-
-bay_income1 <- get_acs(
-  geography = "county",
-  year = 2019,
-  state = "CA",
-  county = c("Alameda","Contra Costa", "Marin", "Napa", "San Francisco", "San Mateo", "Santa Clara", "Solano", "Sonoma"),
-  variable = "B06011_001E",
-  geometry = TRUE
-) 
-
-```
-
-```{r}
-income_pal <- colorNumeric(
-  palette = "plasma",
-  domain = bay_income1$estimate
-)
-
-leaflet() %>% 
-  addProviderTiles(providers$CartoDB.Positron) %>% 
-  addPolygons(
-    data = bay_income1,
-    fillColor = ~income_pal(estimate),
-    color = "white",
-    weight = 0.5,
-    fillOpacity = 0.5,
-    label = ~estimate
-  ) %>%
-  addLegend(
-    position = "bottomright",
-    pal = income_pal,
-    values = bay_income1$estimate,
-    title = "Bay Area Median Yearly Income ($)"
-  )
-```
-The median yearly income by county also corresponds similarly with the median housing prices by county. 
-
-```{r}
-bay_housing_income_tract <- 
-  getCensus(
-    name = "acs/acs5",
-    vintage = 2019,
-    region = "tract:*",
-    regionin = "state:06+county:001,013,041,055,075,081,085,095,097",
-    vars = c(
-      "B06011_001E",
-      "B25077_001E")
-      ) %>% 
-  transmute(
-    tract = paste0(state, county, tract),
-    house_value = B25077_001E,
-    income = B06011_001E 
-  ) %>% 
-  filter(
-    !is.na(house_value), 
-    !is.na(income)
-  )
-    
-view(bay_housing_income_tract)
-```
-
-```{r, progress_bar = F}
-years <- 2005:2019
-names(years) <- years
-
-bay_value <- map_dfr(years, ~{
-  get_acs(
-    geography = "county",
-    variables = "B25077_001",
-    state = "CA",
-    county = c("Alameda","Contra Costa", "Marin", "Napa", "San Francisco", "San Mateo", "Santa Clara", "Solano", "Sonoma"),
-    year = .x,
-    survey = "acs1"
-  )
-}, .id = "year") %>% mutate("County" = NAME, ) %>% mutate("Median_Home_Value" = estimate)
-```
-
-```{r}
-ggplot() +
-  geom_point(data = bay_value, aes(x = year, y = Median_Home_Value, group = 1, color = County)) +
-  theme(legend.title = element_text(face="bold"))+
-  ggtitle("Estimate Median Home Values ($) for \nBay Area Counties from 2005-2019")
-
-
-```
-
-```{r}
-bay_income <- map_dfr(years, ~{
-  get_acs(
-    geography = "county",
-    variables = "B06011_001",
-    state = "CA",
-    county = c("Alameda","Contra Costa", "Marin", "Napa", "San Francisco", "San Mateo", "Santa Clara", "Solano", "Sonoma"),
-    year = .x,
-    survey = "acs1"
-  )
-}, .id = "year") %>% mutate("County" = NAME, ) %>% mutate("Median_Income" = estimate)
-```
-
-
-```{r}
-ggplot() +
-  geom_point(data = bay_income, aes(x = year, y = Median_Income, group = 1, color = County)) +
-  theme(legend.title = element_text(face="bold"))+
-  ggtitle("Estimate Median Annual Income ($) for \nBay Area Counties from 2005-2019")
-```
-If we look at the increase in median home prices according to the ACS 1 year survey, we can see that housing prices have increased with median income levels for each county. 
-The years after the 2008 Housing and Financial Crisis marked a significant dip in both sets of data, but after 2012 both values began to rise and kept rising. 
-
-##Racial Equity Analysis 
-Racial disparities are a painful reality as a result of systemic and historic inequities and discrimination. 
-Equity analyses are important to conduct in order for policy makers, researchers, and community organizers to highlight communities that are under-served and allocate policies, funding, or advocacy to help address these inequities. 
 
 ```{r}
 bay_mobility_race <-
@@ -719,7 +611,6 @@ bay_mobility_race <-
       mutate(race = census_race_categories[x])
   })
 ```
-
 
 ```{r}
 bay_income_race_total <-
@@ -770,9 +661,7 @@ bay_income_race %>%
   )
 ```
 
-
-
-This plot shows the proportions of Bay Area Household Income by Race with the American Communities Survey (ACS) 5 year data. This plot shows that "White alone households" have the highest proportion of income, then "Asian Alone" and the lowest proportions are "American Indian and Alaska Native Alone" and "Native Hawaiian and Other Pacific Islander Alone."  
+This plot shows the proportions of Bay Area Household Income by Race with the American Communities Survey (ACS) 5 year data. This plot shows that "White Alone" households have the highest proportion of income across all income brackets but especially for the total, then "Asian Alone" and the lowest proportions are "American Indian and Alaska Native Alone" and "Native Hawaiian and Other Pacific Islander Alone."  
 
 ```{r}
 
@@ -808,65 +697,9 @@ bay_mobility_race %>%
   )
 ```
 This plot shows the proportions of Bay Area Household Mobility by Race with the American Communities Survey (ACS) 5 year data. The "mobility" is determined by the individual income for a current residence. ???
+"White Alone" households have the highest proportion of geographic mobility in all categories except "moved from abroad" in which "Asian Alone" households have the highest proportion. "American Indian or Alaska Native Alone" and "Native Hawaiian and Other Pacific Islander Alone" have the lowest proportion of geographic mobility for every category (besides "Some Other Race Alone"). 
 
-
-## Bay Area Racial Demographics by Census County
-```{r}
-
-
-bay_race <- get_acs(
-  geography = "county",
-  year = 2019,
-  state = "CA",
-  county = c("Alameda","Contra Costa", "Marin", "Napa", "San Francisco", "San Mateo", "Santa Clara", "Solano", "Sonoma"),
-  variables = c(White = "B03002_003",
-                Black = "B03002_004",
-                Native_American = "B03002_005",
-                Asian = "B03002_006",
-                Hispanic = "B03002_012"),
-  summary_var = "B03002_001",
-  geometry = TRUE
-) 
-
-
-
-bay_race_percent <- bay_race %>%
-  mutate(percent = 100 * (estimate / summary_est))
-
-```
-
-```{r}
-groups <- unique(bay_race$variable)
-
-bay_points <- map_dfr(groups, ~{
-  bay_race %>%
-    filter(variable == .x) %>%
-    st_transform(26910) %>%
-    mutate(est100 = as.integer(estimate / 100)) %>%
-    st_sample(size = .$est100, exact = TRUE) %>%
-    st_sf() %>%
-    mutate(group = .x)
-}) %>%
-  slice_sample(prop = 1)
-```
-
-Dot Density Map of Concentration of Different Racial Groups in the Bay Area - 2019 (ACS)
-```{r}
-background_tracts <- filter(bay_race, variable == "White")
-
-tm_shape(background_tracts, 
-         projection = sf::st_crs(26910)) + 
-  tm_polygons(col = "white", 
-              border.col = "black",
-              size = 0.100,
-              ) + 
-  tm_shape(bay_points) +
-  tm_dots(col = "group", 
-          palette = "RdYlBu",
-          size = 0.010, 
-          title = "Census Race Groups")
-```
-
+The geographic mobility proportions are similar to the ordering of household income by race. While both plots show significant disparities, interestingly, there is more equity or equal distribution in the geographic mobility analysis. 
 
 ## Historic Redlining in the Bay Area
 
@@ -963,10 +796,8 @@ When looking at the maps of the HOLC grades from 1937, we can see many similarit
 
 Especially when considering the higher concentration of white households in these "A" grade neighborhoods still today being correlated with high concentrations of wealth, we can still see the impacts of these institutionalized forms of discrimination today.
 
-### Bay Area Racial Demographics
+## Historic HOLC Gradings Compared with Contemporary Racial Demographics
 ```{r}
-
-
 bay_race <- get_acs(
   geography = "tract",
   year = 2019,
@@ -1049,8 +880,6 @@ leaflet() %>%
 ```
 
 
-
-
 ```{r}
 bay_black_pal <- colorNumeric(
   palette = "Blues",
@@ -1090,8 +919,6 @@ leaflet() %>%
   )
 ```
 
-
-
 ```{r}
 bay_nat_am_pal <- colorNumeric(
   palette = "Reds",
@@ -1111,7 +938,6 @@ leaflet() %>%
   )
 ```
 
-
 ```{r}
 bay_white_pal <- colorNumeric(
   palette = "Reds",
@@ -1130,7 +956,6 @@ leaflet() %>%
     label = ~percent
   )
 ```
-
 
 ```{r}
 pums_2019_1yr <- getCensus(
