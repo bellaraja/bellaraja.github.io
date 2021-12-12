@@ -807,8 +807,8 @@ bay_race <- get_acs(
                 Black = "B03002_004",
                 Native_American = "B03002_005",
                 Asian = "B03002_006",
-                Hispanic = "B03002_012"),
-  summary_var = "B03002_001",
+                Hispanic_or_Latino = "B03002_012"),
+  summary_var = "B02001_001",
   geometry = TRUE,
   key = "ffe5c482aad3c87fd918ba8a6bd5967ae4228456"
 ) 
@@ -816,17 +816,18 @@ bay_race <- get_acs(
 
 bay_race_percent <- bay_race %>%
   mutate(percent = 100 * (estimate / summary_est))
-
+#bay racial demographics + percentages
 ```
 
 ```{r}
 bay_asian <- filter(bay_race_percent, variable == "Asian")%>% filter(!is.na(percent))
 bay_black <- filter(bay_race_percent, variable == "Black")%>% filter(!is.na(percent))
-bay_hisp <- filter(bay_race_percent, variable == "Hispanic")%>% filter(!is.na(percent))
+bay_hisp <- filter(bay_race_percent, variable == "Hispanic_or_Latino")%>% filter(!is.na(percent))
 bay_nat_am <- filter(bay_race_percent, variable == "Native_American")%>% filter(!is.na(percent))
 bay_white <- filter(bay_race_percent, variable == "White")%>% filter(!is.na(percent))
 ```
 
+These maps show the percentages of people identified in the census race categories as "Asian," "Black," "Hispanic or Latino," "Native American," or "White" living in the different Bay Area census tracts. While the census also tracks other racial and ethnic categories, for the sake of the HOLC comparative analysis, these bigger categories will serve as the source of analysis and comparison to the HOLC gradings of different census tracts from 1937. 
 
 ```{r}
 bay_asian_pal <- colorNumeric(
@@ -842,7 +843,7 @@ leaflet() %>%
     fillColor = ~bay_asian_pal(percent),
     color = "white",
     weight = 0.5,
-    fillOpacity = 0.5,
+    fillOpacity = 2,
     label = ~percent
   ) %>% addPolygons(
     data = holc_areas,
@@ -874,7 +875,7 @@ leaflet() %>%
     fillColor = ~bay_black_pal(percent),
     color = "white",
     weight = 0.5,
-    fillOpacity = 3,
+    fillOpacity = 2,
     label = ~percent
   ) %>% addPolygons(
     data = holc_areas,
@@ -906,7 +907,7 @@ leaflet() %>%
     fillColor = ~bay_hisp_pal(percent),
     color = "white",
     weight = 0.5,
-    fillOpacity = 0.5,
+    fillOpacity = 2,
     label = ~percent
   )  %>% addPolygons(
     data = holc_areas,
@@ -919,7 +920,7 @@ leaflet() %>%
     position = "bottomright",
     pal = bay_hisp_pal,
     values = bay_hisp$percent,
-    title = "Percentage of Hispanic <br> Identifying by County - 2019<br> with Overlayed HOLC Grades"
+    title = "Percentage of Hispanic or Lation <br> Identifying by County - 2019<br> with Overlayed HOLC Grades"
   )
 ```
 
@@ -937,7 +938,7 @@ leaflet() %>%
     fillColor = ~bay_nat_am_pal(percent),
     color = "white",
     weight = 0.5,
-    fillOpacity = 0.5,
+    fillOpacity = 2,
     label = ~percent
   )  %>% addPolygons(
     data = holc_areas,
@@ -968,7 +969,7 @@ leaflet() %>%
     fillColor = ~bay_white_pal(percent),
     color = "white",
     weight = 0.5,
-    fillOpacity = 0.5,
+    fillOpacity = 2,
     label = ~percent
   ) %>% addPolygons(
     data = holc_areas,
@@ -1068,7 +1069,8 @@ bay_pums_lowinc <-
 ```
 
 
-Map of Percent of Households in each PUMA (census microdata) that have an annual income of less than 100K.
+## Map of Percent of Households in each PUMA (census microdata) that have an annual income of less than 100K.
+This map shows the income percentage data as in the previous map as but with the HOLC 1937 gradings overlayed on the regions that were included in those redlining policies. Double tap on different regions to zoom-in and compare the gradings that were highly based on race and socioeconomic status in the late 1930s to the current day socio-economic breakdowns of the Bay Area.
 ```{r}
 pums_pal <- colorNumeric(
   palette = "Blues",
@@ -1103,8 +1105,9 @@ lowinc_map <- leaflet() %>%
 lowinc_map
 ```
 
-This map shows the income percentage data as in the previous map as but with the HOLC 1937 gradings overlayed on the regions that were included in those redlining policies.
-Double tap on different regions to zoom-in and compare the gradings that were highly based on race and socioeconomic status in the late 1930s to the current day socio-economic breakdowns of the Bay Area.
+For many Bay Counties, such as San Francisco, households making less than 100K annually are cosnidered low income by HUD (U.S. Dept. of Housing and Urban Development). While this varies county to county, the Bay Area across all counties is quite an expensive place to live and making less than 100K annually can be considered lower income for this comparative analysis.  
+
+## Map of Percent of Households with annual income of less than 100K (2019) with historic HOLC Gradings.
 ```{r}
 lowinc_map %>% addPolygons(
     data = (holc_areas),
