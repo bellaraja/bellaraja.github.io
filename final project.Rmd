@@ -805,7 +805,7 @@ bay_race <- get_acs(
   county = c("Alameda","Contra Costa", "Marin", "Napa", "San Francisco", "San Mateo", "Santa Clara", "Solano", "Sonoma"),
   variables = c(White = "B03002_003",
                 Black = "B03002_004",
-                Native = "B03002_005",
+                Native_American = "B03002_005",
                 Asian = "B03002_006",
                 Hispanic = "B03002_012"),
   summary_var = "B03002_001",
@@ -817,49 +817,20 @@ bay_race <- get_acs(
 bay_race_percent <- bay_race %>%
   mutate(percent = 100 * (estimate / summary_est))
 
-
-
-view(bay_race)
 ```
 
 ```{r}
-bay_asian <- filter(bay_race_percent, variable == "Asian")
-bay_black <- filter(bay_race_percent, variable == "Black")
-bay_hisp <- filter(bay_race_percent, variable == "Hispanic")
-bay_nat_am <- filter(bay_race_percent, variable == "Native")
-bay_white <- filter(bay_race_percent, variable == "White")
+bay_asian <- filter(bay_race_percent, variable == "Asian")%>% filter(!is.na(percent))
+bay_black <- filter(bay_race_percent, variable == "Black")%>% filter(!is.na(percent))
+bay_hisp <- filter(bay_race_percent, variable == "Hispanic")%>% filter(!is.na(percent))
+bay_nat_am <- filter(bay_race_percent, variable == "Native_American")%>% filter(!is.na(percent))
+bay_white <- filter(bay_race_percent, variable == "White")%>% filter(!is.na(percent))
 ```
 
 
 ```{r}
 bay_asian_pal <- colorNumeric(
-  palette = "Reds",
-  domain = bay_asian$percent
-    
-)
-
-leaflet() %>% 
-  addProviderTiles(providers$CartoDB.Positron) %>% 
-  addPolygons(
-    data = bay_asian,
-    fillColor = ~bay_asian_pal(percent),
-    color = "white",
-    weight = 0.5,
-    fillOpacity = 3,
-    label = ~percent
-  ) %>% addPolygons(
-    data = holc_areas,
-    color = none,
-    weight = 0.25,
-    fillOpacity = 0,
-    label = ~holc_grade
-  
-  )
-```
-
-```{r}
-bay_asian_pal <- colorNumeric(
-  palette = "Reds",
+  palette = "Blues",
   domain = bay_asian$percent
     
 )
@@ -875,7 +846,16 @@ leaflet() %>%
     label = ~percent
   ) %>% addPolygons(
     data = holc_areas,
+    color = none,
+    weight = 0.25,
+    fillOpacity = 0,
     label = ~holc_grade
+  ) %>%
+  addLegend(
+    position = "bottomright",
+    pal = bay_asian_pal,
+    values = bay_asian$percent,
+    title = "Percentage of Asian <br> Identifying by County - 2019 <br> with Overlayed HOLC Grades"
   )
 ```
 
@@ -896,13 +876,25 @@ leaflet() %>%
     weight = 0.5,
     fillOpacity = 3,
     label = ~percent
+  ) %>% addPolygons(
+    data = holc_areas,
+    color = none,
+    weight = 0.25,
+    fillOpacity = 0,
+    label = ~holc_grade
+  ) %>%
+  addLegend(
+    position = "bottomright",
+    pal = bay_black_pal,
+    values = bay_black$percent,
+    title = "Percentage of Black <br> Identifying by County - 2019 <br> with Overlayed HOLC Grades"
   )
 ```
 
 
 ```{r}
 bay_hisp_pal <- colorNumeric(
-  palette = "Reds",
+  palette = "Blues",
   domain = bay_hisp$percent
     
 )
@@ -916,12 +908,24 @@ leaflet() %>%
     weight = 0.5,
     fillOpacity = 0.5,
     label = ~percent
+  )  %>% addPolygons(
+    data = holc_areas,
+    color = none,
+    weight = 0.25,
+    fillOpacity = 0,
+    label = ~holc_grade
+  ) %>%
+  addLegend(
+    position = "bottomright",
+    pal = bay_hisp_pal,
+    values = bay_hisp$percent,
+    title = "Percentage of Hispanic <br> Identifying by County - 2019<br> with Overlayed HOLC Grades"
   )
 ```
 
 ```{r}
 bay_nat_am_pal <- colorNumeric(
-  palette = "Reds",
+  palette = "Blues",
   domain = bay_nat_am$percent
     
 )
@@ -935,12 +939,24 @@ leaflet() %>%
     weight = 0.5,
     fillOpacity = 0.5,
     label = ~percent
+  )  %>% addPolygons(
+    data = holc_areas,
+    color = none,
+    weight = 0.25,
+    fillOpacity = 0,
+    label = ~holc_grade
+  ) %>%
+  addLegend(
+    position = "bottomright",
+    pal = bay_nat_am_pal,
+    values = bay_nat_am$percent,
+    title = "Percentage of Native American <br> Identifying by County - 2019 <br> with Overlayed HOLC Grades"
   )
 ```
 
 ```{r}
 bay_white_pal <- colorNumeric(
-  palette = "Reds",
+  palette = "Blues",
   domain = bay_white$percent
     
 )
@@ -954,6 +970,17 @@ leaflet() %>%
     weight = 0.5,
     fillOpacity = 0.5,
     label = ~percent
+  ) %>% addPolygons(
+    data = holc_areas,
+    color = none,
+    weight = 0.25,
+    fillOpacity = 0,
+    label = ~holc_grade
+  ) %>% addLegend(
+    position = "bottomright",
+    pal = bay_white_pal,
+    values = bay_white$percent,
+    title = "Percentage of White <br> Identifying by County - 2019 <br> with Overlayed HOLC Grades"
   )
 ```
 
@@ -1076,7 +1103,7 @@ lowinc_map <- leaflet() %>%
 lowinc_map
 ```
 
-This map shows the incone percentage data as in the previous map as but with the HOLC 1937 gradings overlayed on the regions that were included in those redlining policies.
+This map shows the income percentage data as in the previous map as but with the HOLC 1937 gradings overlayed on the regions that were included in those redlining policies.
 Double tap on different regions to zoom-in and compare the gradings that were highly based on race and socioeconomic status in the late 1930s to the current day socio-economic breakdowns of the Bay Area.
 ```{r}
 lowinc_map %>% addPolygons(
