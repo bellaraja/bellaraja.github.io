@@ -34,7 +34,9 @@ pge_data <-
   filter(
     CUSTOMERCLASS %in% c(
       "Elec- Commercial",
-      "Elec- Residential"
+      "Elec- Residential",
+      "Gas- Commercial",
+      "Gas- Residential"
     )
   ) %>% 
   group_by(
@@ -71,10 +73,10 @@ checkboxGroupInput(
 ```
 
 ```{r}
-checkboxGroupInput(
+selectInput(
   inputId = "class", 
-  label = "Customer Class:",
-  choices = c("Elec- Commercial", "Elec- Residential", "Gas- Commercial", "Gas- Residential"), 
+  label = "Customer Class and Energy Type:",
+  choices = c("Elec- Commercial", "Elec- Residential", "Gas- Commercial", "Gas- Residential"),
   selected = "Elec- Commercial"
 )
 ```
@@ -90,7 +92,9 @@ plotlyOutput("plot")
 
 
 ```{r context = "server"}
-observeEvent(input$year, {
+observeEvent({input$year
+  input$class}
+             , {
   
   chart <- pge_data %>% 
      filter(
@@ -127,7 +131,7 @@ observeEvent(input$year, {
     labs(
       x = "",
       y = "Total kBTUs (billions)",
-      title = paste0(input$class, " Energy Consumption <br> in the Bay Area, ", input$year),
+      title = paste0(input$class, " Energy Consumption <br> in the Bay Area, ", input$year, collapse = ","),
       color = "Year"
     ) + 
     theme(legend.position = "none")
@@ -155,11 +159,11 @@ observeEvent({input$year
   input$class}
              , {
   
-  pge_res_elec <-
+  pge_class <-
     pge_data_raw %>% 
     filter(
       CUSTOMERCLASS %in% input$class,
-      YEAR %in% input$year
+      YEAR %in% max(input$year)
     ) %>% 
     mutate(
       ZIPCODE = ZIPCODE %>% as.character()
@@ -175,18 +179,18 @@ observeEvent({input$year
     st_as_sf() %>% 
     st_transform(4326)
   
-  res_pal <- colorNumeric(
+  class_pal <- colorNumeric(
     palette = "Reds",
     domain = 
-      pge_res_elec$TOTALKBTU
+      pge_class$TOTALKBTU
   )
   
   output$map <- renderLeaflet({
     leaflet() %>% 
       addProviderTiles(provider = providers$CartoDB.Positron) %>% 
       addPolygons(
-        data = pge_res_elec,
-        fillColor = ~res_pal(TOTALKBTU),
+        data = pge_class,
+        fillColor = ~class_pal(TOTALKBTU),
         color = "white",
         opacity = 0.5,
         fillOpacity = 0.5,
@@ -202,20 +206,14 @@ observeEvent({input$year
         )
       ) %>% 
       addLegend(
-        data = pge_res_elec,
-        pal = res_pal,
+        data = pge_class,
+        pal = class_pal,
         values = ~TOTALKBTU,
-        title = paste0(input$class, " Total Energy (kBTU), ", input$year, collapse = NULL),
+        title = paste0(input$class, " Total Energy (kBTU), ", max(input$year)),
       )
   })
   
 })
 ```
 
-
-
-
-
-
-## R Markdown
 
