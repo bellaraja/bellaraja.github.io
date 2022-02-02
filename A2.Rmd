@@ -1,0 +1,601 @@
+---
+title: "A2 - Complete Community Assessment of Marin City and Marin County"
+author: "Bella Raja"
+date: "1/26/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+
+```{r, include=FALSE}
+library(tidyverse)
+library(readxl)
+library(tigris)
+library(sf)
+library(leaflet)
+library(mapview)
+library(mapboxapi)
+library(lehdr)
+library(censusapi)
+
+Sys.setenv(CENSUS_KEY="c8aa67e4086b4b5ce3a8717f59faa9a28f611dab")
+```
+
+
+```{r, progress_bar = FALSE, include=FALSE}
+
+pois <- st_read("/Volumes/GoogleDrive/Shared drives/SFBI/Data Library/OSM/gis_osm_pois_a_free_1.shp")
+
+saveRDS(pois, "pois.rds")
+
+pois <- readRDS("pois.rds")
+```
+
+
+```{r, include=FALSE}
+pois_summary <- pois %>% 
+  st_drop_geometry() %>% 
+  group_by(fclass) %>% 
+  count() %>% 
+  arrange(desc(n))
+
+pois_summary
+```
+
+
+
+
+```{r, progress_bar = FALSE, include=FALSE}
+ma_boundary <- counties("CA") %>% 
+  filter(NAME == "Marin") %>% 
+  st_transform(st_crs(pois))
+
+ma_pois <- pois %>% 
+  .[ma_boundary,] 
+
+
+```
+
+###Marin County Amenities 
+```{r}
+ma_pois_filter <- ma_pois %>% 
+  rename(amenity = fclass) %>% 
+  filter(amenity %in% c(
+    "park",
+    "convenience",
+    "restaurant",
+    "supermarket",
+    "library",
+    "school",
+    "hospital",
+    "atm",
+    "greengrocer"
+  ))
+
+mapview(ma_pois_filter, zcol = "amenity")
+```
+This map shows the distributions of various amenities I chose for my complete communities scoring and assessment. 
+```{r}
+saveRDS(ma_pois_filter, "ma_pois_filter.rds")
+ma_pois_filter <- readRDS("ma_pois_filter.rds")
+```
+
+```{r, progress_bar= FALSE, include=FALSE}
+ma_cbgs <- block_groups("CA","Marin")
+
+```
+
+```{r, progress_bar = FALSE, include=FALSE}
+mc_boundary <- places("CA") %>% 
+  filter(NAME == "Marin City")
+
+mc_cbgs <- ma_cbgs %>% 
+  st_centroid() %>% 
+  .[mc_boundary, ] %>% 
+  st_drop_geometry() %>% 
+  left_join(ma_cbgs %>% select(GEOID)) %>% 
+  st_as_sf()
+```
+
+
+```{r, progress_bar = FALSE}
+mapview(mc_cbgs)
+```
+
+```{r}
+saveRDS(mc_cbgs, "mc_cbgs.rds")
+mc_cbgs <- readRDS("mc_cbgs.rds")
+```
+
+Marin City small unincorporated area of Marin County surrounded by the more affluent Sausalito and Mill Valley. It is often cited as a large site of inequities especially when it comes to health care and healthy food access compared to the rest of Marin County.
+
+```{r, include=FALSE}
+mc_amenity_preference <- data.frame(
+  amenity = c(
+    "park", 
+    "convenience", 
+    "restaurant", 
+    "supermarket", 
+    "library", 
+    "school", 
+    "hospital",
+    "atm",
+    "greengrocer"),
+  amenity_value = c(
+    0.5, 
+    0.4, 
+    0.75, 
+    1, 
+    0.7, 
+    1, 
+    1 ,
+    1,
+    0.9),
+  amenity_quantity = c(
+    2,
+    5,
+    10,
+    3,
+    1,
+    3,
+    2,
+    4,
+    2
+    
+  )
+) %>% 
+  mutate(
+    amenity_decay = -log(0.5)/(amenity_quantity)
+  )
+
+saveRDS(mc_amenity_preference, "mc_amenity_preference.rds")
+```
+
+```{r, progress_bar = FALSE, include =FALSE}
+isochrones <- c("walking","driving") %>% 
+  map_dfr(function(x){
+    
+    mb_isochrone(
+      mc_cbgs,
+      profile = x,
+      time = c(5,10,15)
+    ) %>% 
+      mutate(mode = x)
+    
+  })
+```
+
+```{r}
+saveRDS(isochrones, "mc_isochrones.rds")
+isochrones <- readRDS("mc_isochrones.rds")
+```
+
+```{r, progress_bar = FALSE}
+access_raw_mc <- isochrones %>% 
+  st_make_valid() %>%
+  st_join(ma_pois_filter) %>% 
+  filter(!is.na(osm_id)) %>% 
+  st_drop_geometry()
+
+
+saveRDS(access_raw_mc, "access_raw_mc.rds")
+access_raw_mc <- readRDS("access_raw_mc.rds")
+``` 
+
+
+###Subjective Complete Community Scoring of Amenities and Respective Values
+
+```{r}
+mc_amenity_preference <- data.frame(
+  amenity = c(
+    "park", 
+    "convenience", 
+    "restaurant", 
+    "supermarket", 
+    "library", 
+    "school", 
+    "hospital",
+    "atm",
+    "greengrocer"),
+  amenity_value = c(
+    0.5, 
+    0.4, 
+    0.75, 
+    1, 
+    0.7, 
+    1, 
+    1 ,
+    1,
+    0.9),
+  amenity_quantity = c(
+    2,
+    5,
+    10,
+    3,
+    1,
+    3,
+    2,
+    4,
+    2
+    
+  )
+) %>% 
+  mutate(
+    amenity_decay = -log(0.5)/(amenity_quantity)
+  )
+
+saveRDS(mc_amenity_preference, "mc_amenity_preference.rds")
+```
+
+
+```{r}
+
+ma_pois_filter <- readRDS("ma_pois_filter.rds")
+
+access_raw_mc <- readRDS("access_raw_mc.rds")
+
+mc_amenity_preference <- readRDS("mc_amenity_preference.rds")
+
+  
+```
+
+```{r}
+
+mode_preference <- data.frame(
+  mode = c(
+    "walking",
+    "biking",
+    "driving"
+  ),
+  mode_value = c(
+    0.8,
+    0.75,
+    0.7
+  ),
+  mode_reasonable = c(
+    15,
+    10,
+    20
+  )
+) %>% 
+  mutate(
+    mode_decay = -log(0.5)/mode_reasonable
+  )
+```
+
+Baseline score
+```{r, progress_bar =FALSE}
+complete_baseline <- data.frame(
+  amenity = mc_amenity_preference$amenity%>%
+    rep(mc_amenity_preference$amenity_quantity)
+)%>%
+  left_join (mc_amenity_preference,
+             by = "amenity"
+  )%>%
+  group_by(amenity)%>%
+  mutate(
+    amenity_rank = row_number() - 1
+  )%>%
+  ungroup()%>%
+  mutate(
+  score = amenity_value * exp(-amenity_rank * amenity_decay) * 0.5
+  )
+
+
+sum(complete_baseline$score)
+```
+This baseline score takes into account the amenity ranks, value, and decay to calculate a baseline community score to be compared with the final Marin City community score.
+
+
+```{r}
+
+complete_temp <- access_raw_mc %>%
+  left_join(
+    mc_amenity_preference,
+    by = "amenity"
+  ) %>%
+  left_join(
+    mode_preference,
+    by = "mode"
+    ) %>%
+  group_by(id,mode,amenity)%>%
+  arrange(time) %>%
+  mutate(
+    amenity_rank = row_number() - 1 
+  
+  )%>%
+  ungroup()
+
+
+```
+
+```{r, progress_bar =FALSE}
+complete_modes <- complete_temp %>%
+  mutate(
+    score = amenity_value * exp(-amenity_rank * amenity_decay) * exp(-time * mode_decay)
+    ) %>%
+  group_by(id, mode)%>%
+  arrange(desc(score)) %>%
+  filter(!duplicated(osm_id)) %>%
+  summarize(
+    score = sum(score, na.rm=T) / sum(complete_baseline$score)
+    
+  )
+complete_modes
+```
+### Map of Marin City Complete Communities Analysis
+
+```{r}
+complete_total <- complete_temp %>%
+  mutate (
+    score = amenity_value * exp(-amenity_rank * amenity_decay) * mode_value * exp(-time * mode_decay)) %>%
+  group_by(id) %>%
+  arrange(desc(score))%>%
+  filter(!duplicated(osm_id)) %>%
+  summarize( score = sum(score, na.rm= T)/ sum (complete_baseline$score)
+  ) %>%
+  mutate(mode = "total" )
+
+complete <- rbind(
+  complete_modes,
+  complete_total
+)
+
+complete_map <- complete %>%
+  pivot_wider(
+    names_from = "mode",
+    values_from = "score"
+  )%>%
+  cbind(mc_cbgs %>% select(GEOID))%>%
+  st_as_sf()
+
+mapview(complete_map, zcol= "total")
+
+
+
+```
+
+This map shows the complete community score based on subjective weights on the following POIs "park", "convenience", "restaurant", "supermarket", "library", "school", "hospital", "atm", and "greengrocer" divided by a baseline score.
+Below 1 would be below baseline, so Marin City's block groups are just barely above a baseline that was relatively modest (based on the small geographic area).
+
+The census block group (cbg) closest to the highway has a lower score that the other larger block group.
+It's also important to note that Marin City Eastern portion sits right on the Redwood Highway putting it very close to major sources of pollution. It would be interesting to follow-up this analysis using CalEnviroScreen or creating a complete community score when it comes to climate change in the future.
+
+
+Interestingly, there were not any greengrocers or atms listed in Marin City cbgs. This also speaks to the equity and access issue to healthy food options and accessible cash. The closest hospital listed, "Marin General Hospital" is 15 minutes by driving. 
+
+Changes in land use could be to promote more equity in access to healthy food, health care, and financial services near by. 
+Although Marin City is a smaller-unincorporated region of Marin County, the stark and concentrated disparities need to be addressed to promote county-wide equity. 
+
+
+### Assessing Broader Health Access Disparities in Marin County
+
+```{r, progress_bar = FALSE, warning=FALSE, include=FALSE}
+drive_10min <- mb_isochrone(
+  complete_map,
+  profile = "driving",
+  time = 10
+)
+
+mc_drive_10min <-
+  complete_map %>% 
+  st_drop_geometry() %>% 
+  cbind(drive_10min$geometry) %>% 
+  st_as_sf()
+```
+
+
+
+
+
+ 
+
+
+
+```{r}
+acs_vars_2019_5yr <-
+  listCensusMetadata(
+    name = "2019/acs/acs5",
+    type = "variables"
+  )
+
+covid_testing <-
+  st_read("https://opendata.arcgis.com/datasets/d7d10caf1cec43e0985cc90fbbcf91cb_0.geojson")
+```
+
+
+```{r}
+bay_county_names <-
+  c(
+    "Alameda",
+    "Contra Costa",
+    "Marin",
+    "Napa",
+    "San Francisco",
+    "San Mateo",
+    "Santa Clara",
+    "Solano",
+    "Sonoma"
+  )
+
+bay_counties <-
+  counties("CA", cb = T, progress_bar = F) %>%
+  filter(NAME %in% bay_county_names) %>% 
+  st_transform(st_crs(covid_testing))
+
+bay_covid_testing <-
+  covid_testing %>% 
+  .[bay_counties, ] %>% 
+  filter(status == "Open")
+leaflet() %>% 
+  addProviderTiles(providers$CartoDB.Positron) %>% 
+  addCircleMarkers(
+    data = bay_covid_testing,
+    radius = 1,
+    label = ~name
+  )
+
+
+```
+
+
+```{r}
+ma_covid_testing <-
+  bay_covid_testing %>% 
+  .[bay_counties %>% filter(NAME == "Marin"), ]
+```
+
+
+```{r}
+drive_10min <- mb_isochrone(
+  ma_covid_testing,
+  profile = "driving",
+  time = 10
+)
+
+saveRDS(drive_10min,"drive_10min.rds")
+drive_10min <-readRDS("drive_10min.rds")
+
+```
+
+
+
+```{r}
+ma_covid_testing_drive_10min <-
+  ma_covid_testing %>% 
+  st_drop_geometry() %>% 
+  cbind(drive_10min$geometry) %>% 
+  st_as_sf()
+
+ma_bgs <- 
+  block_groups("CA","041", cb = T, progress_bar = F) %>% 
+  st_transform(26910) %>% 
+  mutate(original_area = st_area(.))
+
+ma_bg_isochrone_intersect <-
+  ma_bgs %>% 
+  st_intersection(
+    ma_covid_testing_drive_10min %>% 
+      st_union() %>% 
+      st_transform(26910)
+  ) %>% 
+  mutate(
+    leftover_area = st_area(.),
+    perc_area = leftover_area / original_area
+  )
+
+ma_bg_income <-
+  getCensus(
+    name = "acs/acs5",
+    vintage = 2019,
+    region = "block group:*", 
+    regionin = "state:06+county:041",
+    vars = "group(B19001)"
+  ) %>% 
+  mutate(cbg = paste0(state,county,tract,block_group)) %>% 
+  select(!c(GEO_ID,state,county,tract,block_group,NAME) & !ends_with(c("EA","MA","M"))) %>%
+  pivot_longer(
+    ends_with("E"),
+    names_to = "variable",
+    values_to = "estimate"
+  ) %>%
+  left_join(
+    acs_vars_2019_5yr %>% 
+      select(name, label), 
+    by = c("variable" = "name")
+  ) %>% 
+  select(-variable) %>% 
+  separate(
+    label,
+    into = c(NA,NA,"income"),
+    sep = "!!"
+  ) %>% 
+  filter(!is.na(income)) %>% 
+  mutate(
+    income = case_when(
+      income %in% c("Less than $10,000","$10,000 to $14,999","$15,000 to $19,999","$20,000 to $24,999") ~ "Less than $25,000",
+      income %in% c("$25,000 to $29,999","$30,000 to $34,999","$35,000 to $39,999","$40,000 to $44,999","$45,000 to $49,999") ~ "$25,000 to $49,999",
+      income %in% c("$50,000 to $59,999","$60,000 to $74,999") ~ "$50,000 to $74,999",
+      TRUE ~ income
+    )
+  )
+
+ma_income <-
+  ma_bg_income %>% 
+  mutate(income = factor(income, levels = unique(ma_bg_income$income))) %>% 
+  group_by(income) %>% 
+  summarize(estimate = sum(estimate)) %>% 
+  mutate(
+    perc = estimate/sum(estimate),
+    group = "Full Population"
+  )
+  
+ma_covid_income <-
+  ma_bg_income %>% 
+  mutate(income = factor(income, levels = unique(ma_bg_income$income))) %>% 
+  left_join(
+    ma_bg_isochrone_intersect %>% 
+      select(cbg = GEOID, perc_area) %>% 
+      st_drop_geometry()
+  ) %>% 
+  filter(!is.na(perc_area)) %>% 
+  mutate(
+    estimate = estimate * perc_area
+  ) %>% 
+  group_by(income) %>% 
+  summarize(estimate = sum(estimate)) %>% 
+  mutate(
+    perc = estimate/sum(estimate),
+    group = "Population within 10 min. drive of COVID-19 testing"
+  )
+```
+```{r}
+sum(ma_covid_income$estimate)/
+  sum(ma_income$estimate)
+```
+0.76% of the population ofMarinCountyiswithin a 10 minute drive to a COVD-19 testing location.
+```{r}
+rbind(ma_income,ma_covid_income) %>% 
+  ggplot(
+    aes(
+      x = "", 
+      y = perc, 
+      fill = reorder(income,desc(income))
+    )
+  ) + 
+  geom_bar(
+    stat = "identity", 
+    position = position_fill()
+  ) +
+  geom_text(
+    aes(label = paste0(round(perc*100),"%")), 
+    position = position_fill(vjust = 0.5)
+  ) +
+  coord_polar(theta = "y") +
+  facet_wrap(~ group)  +
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    legend.position = 'bottom'
+  ) + 
+  guides(
+    fill = guide_legend(nrow=3, byrow=TRUE)
+  ) +
+  labs(
+    fill = "Household\nIncome"
+  )
+```
+
+It is fascinating how closely the Marin County income tiers correspond with breakdowns of access to close COVID-19 testing.
+Despite the median annual household income in Marin County being around $115,246, the median annual household income in Marin City is about $45,841. These disparities are reflected in lacking access to amenities such as greengrocers, atms, and more than one hospital within 15 minutes driving distance. Additionally, Marin City is predominately composed of African American and Latinx communities in contrast with its neighboring cities such as Sausalito and Mill Valley and more broadly the rest of Marin County which is predominately white.
+
+These equity and access issues need to be addressed for the quality of life of Marin City's residents. The score for the Marin City block groups was just barely above a modest baseline with several critical amenities lacking completely or far away. 
+
+If Marin City residents need to drive 15 minutes or more to receive healthcare, access healthy food, or deposit /draw cash that sets a disproportionate burden on a community that is already predominately low-income and historically discriminated against. 
+Future land use should take into account these omissions and needs of the community and collaborate with community leaders to find the best locations and amenities to fit the needs of the community.
+
+
+
