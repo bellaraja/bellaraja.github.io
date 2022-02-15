@@ -1,0 +1,793 @@
+---
+title: "Y-A3"
+author: "Bella Raja"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r}
+library(tigris)
+library(tidyverse)
+library(sf)
+library(leaflet)
+library(mapboxapi)
+library(plotly)
+library(jsonlite)
+library(censusapi)
+library(tidycensus)
+Sys.setenv(CENSUS_KEY = "ffe5c482aad3c87fd918ba8a6bd5967ae4228456")
+```
+
+### Vehicle Emissions
+
+```{r}
+acs_vars_2019_5yr <-
+  listCensusMetadata(
+    name = "2019/acs/acs5",
+    type = "variables"
+  )
+```
+
+```{r}
+path <- "/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/3A/data/"
+```
+
+
+```{r, eval= F}
+ca_od_read <- read.csv("/Volumes/GoogleDrive/Shared drives/SFBI/Data Library/LODES/ca_od_main_JT01_2019.csv.gz") 
+```
+
+```{r, eval = F}
+zctas <- zctas()
+
+zip <- zctas %>% 
+  filter(GEOID10 %in% c("95112", "95113"))
+```
+
+
+```{r, eval = F}
+blocks <- blocks("CA")
+
+zip_blocks <- blocks %>% 
+  st_centroid() %>% 
+  .[zip, ]
+```
+
+
+```{r, eval = F}
+zip_od <- ca_od_read %>% 
+  filter(
+    h_geocode %in% zip_blocks$GEOID10 |
+      w_geocode %in% zip_blocks$GEOID10
+  )
+
+saveRDS(zip,"data/zip_a3.rds")
+saveRDS(zip_blocks,"data/zip_blocks_a3.rds")
+saveRDS(zip_od,"data/zip_od_a3.rds")
+```
+
+```{r, eval=F}
+zip_od <- readRDS("data/zip_od_a3.rds")
+zip_blocks <- readRDS("data/zip_blocks_a3.rds")
+zip_od <- readRDS("data/zip_od_a3.rds")
+```
+
+```{r,eval=FALSE}
+full_zip_od <- 2013:2019 %>% 
+  map_dfr(function(year){
+    
+    print(year)
+    
+    temp <- read_csv(paste0("G:/Shared drives/SFBI/Data Library/LODES/ca_od_main_JT01_", year, ".csv.gz")) %>% 
+      filter(
+        h_geocode %in% zip_blocks$GEOID10 |
+          w_geocode %in% zip_blocks$GEOID10
+      ) %>% 
+      mutate(year = year)
+    
+    saveRDS(temp, paste0("data/a3_temp_od_", year, ".rds"))
+    
+    return(temp)
+    
+  })
+saveRDS(full_zip_od, paste0("data/full_zip_od_a3.rds"))
+```
+
+```{r,eval=F}
+full_zip_od <- readRDS("data/full_zip_od_a3.rds")
+```
+
+
+```{r,eval=F}
+full_zip_od_clean <- full_zip_od %>% 
+  select(-createdate) %>% 
+  filter(!(
+    h_geocode %in% zip_blocks$GEOID10 &
+      w_geocode %in% zip_blocks$GEOID10
+  )) %>% 
+  mutate(
+    direction = ifelse(
+      h_geocode %in% zip_blocks$GEOID10,
+      "outbound",
+      "inbound"
+    )
+  )
+```
+
+
+```{r, eval=F}
+full_zip_od_routing <- full_zip_od_clean %>%
+  mutate(
+    origin = ifelse(
+      direction == "inbound",
+      h_geocode,
+      w_geocode
+    ),
+    cbg = origin %>% substr(1,12),
+    tract = origin %>% substr(1,11)
+  ) %>% 
+  filter(!duplicated(tract)) 
+```
+# change scale between orgin (block), block group, tract
+
+```{r, eval=F}
+ca_tracts <- tracts("CA")
+```
+
+```{r, eval=F}
+zip_od_origin <-
+  full_zip_od_routing %>% 
+  select(tract) %>% 
+  left_join(ca_tracts %>% select(tract = GEOID)) 
+%>% 
+  st_as_sf() %>% 
+  st_centroid() %>% 
+  st_coordinates()
+
+
+zip_od_destination <-
+  zip[1,] %>% # routing to centroid of 95112 because it is close enough to 95113 (smaller zip code)
+  st_centroid() %>% 
+  st_coordinates()
+```
+
+
+```{r,eval=F}
+zip_od_route <- 
+  1:ceiling(nrow(zip_od_origin)/1000) %>% 
+  map_dfr(function(y){
+    
+    print(y)
+    
+    temp <- (y * 1000 - 999) : pmin(y * 1000, nrow(zip_od_origin)) 
+    %>% 
+      map_dfr(function(x){
+        tryCatch(
+          mb_directions(
+            origin = zip_od_origin[x, ],
+            destination = zip_od_destination,
+            profile = "driving-traffic"
+          ) %>% 
+            mutate(id = x),
+          error = function(e){
+            data.frame(id = x)
+          }
+        )
+      }) %>% 
+      st_as_sf()
+      
+      saveRDS(temp, paste0("temp",y,".rds"))
+      
+      return(temp)
+    
+  })
+
+saveRDS(zip_od_route, "data/zip_od_route_a3_tract.rds")
+```
+
+```{r, eval=F}
+zip_od_route <- readRDS("data/zip_od_route_a3_tract.rds")
+```
+
+
+```{r, eval=F}
+full_zip_od_routed <- full_zip_od_routing %>% 
+  cbind(zip_od_route)
+
+
+full_zip_od_final_tract <- full_zip_od_clean %>% 
+  mutate(
+    origin = ifelse(
+      direction == "inbound",
+      h_geocode,
+      w_geocode
+    ),
+    cbg = substr(origin, 1, 12),
+    tract = origin %>% substr(1,11)
+  ) %>% 
+  left_join(
+    full_zip_od_routed %>% 
+      select(tract, duration, distance) #cbg goes here
+  ) %>% 
+  mutate(
+    visits = S000 * 261
+  )
+saveRDS(full_zip_od_final_tract,"full_zip_od_final_tract.rds")
+```
+
+```{r}
+full_zip_od_final_tract <- readRDS("full_zip_od_final_tract.rds")
+```
+
+```{r, eval=F}
+full_zip_od_routing_cbg <- full_zip_od_routing %>%
+  filter(!duplicated(cbg))
+```
+
+```{r}
+full_zip_od_routed_cbg <- readRDS("full_zip_od_routed_cbg.rds")
+```
+##Routing...
+```{r}
+full_zip_od_routed_cbg %>% 
+  st_as_sf() %>% 
+  leaflet() %>% 
+  addMapboxTiles(
+    style_id = "light-v9",
+    username = "mapbox"
+  ) %>% 
+  addPolylines()
+```
+
+##GHG Vehicle Emissions
+```{r,eval=F}
+EMFAC <- read.csv(paste0(path,"/EMFAC2021-EI-202xClass-BayAreaAQMD2013-2014-2015-2016-2017-2018-2019-Summer-20220204082533.csv"), skip = 8) %>%
+  transmute(
+    Category = Vehicle.Category,
+    Fuel_Type = Fuel,
+    Percent_Trips = Trips/sum(Trips),
+    Percent_Miles = `Total.VMT`/sum(Total.VMT),
+    `MTCO2_Running_Exhaust` = CO2_RUNEX/Total.VMT,
+    `MTCO2_Start_Exhaust` = CO2_STREX/Trips
+  )
+```
+
+```{r, eval=F}
+SJ_trips_GHG <- EMFAC %>% 
+  mutate(
+    trips = Percent_Trips * sum(full_zip_od_final$visits, na.rm = T),
+    vmt = Percent_Miles * sum(full_zip_od_final$distance, na.rm = T),
+    ghg = vmt * MTCO2_Running_Exhaust + trips*MTCO2_Start_Exhaust*2
+  )
+# total vehicle GHGs bw 2013 and 2019
+
+SJ_TotalGHG <- sum(SJ_trips_ghg$ghg) # in metric tonnes
+
+# want vehicle GHGs per year
+## need annual data for visits and distance driven
+
+SJ_annual <- full_zip_od_final %>% 
+  group_by(year) %>% 
+  summarize(visits = sum(visits),
+            distance = sum(distance))
+```
+
+```{r, eval=F}
+
+## initialize empty data frame
+SJ_GHG <-
+  data.frame(
+    year = c(2013:2019), 
+    emissions = c(2013:2019)*0
+  )
+# loop through 2013 and 2019 grabbing final emissions
+for (yr in 2013:2019){
+  for (i in 1:length(2013:2019)){
+    temp_ghg <- emfac %>%
+          mutate(
+            trips = Percent_Trips * SJ_annual$visits[i],
+            vmt = Percent_Miles * SJ_annual$distance[i],
+            ghg = vmt * MTCO2_Running_Exhaust + trips*MTCO2_Start_Exhaust*2
+          )
+        temp_net_ghg <- sum(temp_ghg$ghg)
+        temp_avg_ghg <- mean(temp_ghg$ghg)
+        
+        SJ_ghg$emissions[i] <- temp_net_ghg
+        SJ_ghg$mean_emissions[i] <- temp_avg_ghg
+  }
+}
+saveRDS(SJ_GHG, paste0("G:/My Drive/Shaping the Future of the Bay Area: Y/Assignments/3A/data/SJ_ghg_veh.rds")) #added for making plots
+  
+```
+
+```{r}
+SJ_GHG<- readRDS ("SJ_ghg_veh.rds")
+```
+
+# Plotting
+```{r}
+# plotting total annual GHGs
+ggplot(
+  SJ_GHG, 
+  aes(
+    x = as.factor(year),
+    y = emissions
+  )
+) + 
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "Year",
+       y = "Emissions (tons)", 
+       title = "Downtown San Jose Vehicle Emissions, 2013 to 2019") 
+
+# plotting average GHG emissions per trip
+ggplot(
+  SJ_GHG, 
+  aes(
+    x = as.factor(year),
+    y = mean_emissions
+  )
+) + 
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "Year",
+       y = "Average GHG Emissions (tons)", 
+       title = "Average Vehicle Emissions in Downtown San Jose (95113 & 95112), from 2013 to 2019") 
+```
+
+### Building Emissions
+
+
+```{r, eval=F}
+pge_elec_emissions_factor <-
+  data.frame(
+    year = c(2013:2019),
+    factor = c(427,435,405,294,210,206,2.68)
+  )
+pge_elec_emissions_factor %>% 
+  ggplot() +
+  geom_line(
+    aes(
+      x = year,
+      y = factor
+    )
+  ) +
+  labs(
+    x = "Year",
+    y = "Pounds of CO2 per MHh",
+    title = "PG&E electricity emissions rate"
+  )
+```
+
+```{r, eval=F}
+pge_data <- 
+  2013:2019 %>% 
+  map_dfr(function(yr){
+    
+    factor <- 
+      pge_elec_emissions_factor %>% 
+      filter(year == yr) %>% 
+      pull(factor)
+    
+    1:4 %>% 
+      map_dfr(function(quarter){
+        
+        c("Electric","Gas") %>% 
+          map_dfr(function(type){
+            
+            filename <- 
+              paste0(
+                "PGE_",
+                yr,
+                "_Q",
+                quarter,
+                "_",
+                type,
+                "UsageByZip.csv"
+              )
+            
+            temp <- read_csv(filename)
+            
+            if(yr == 2017 & quarter == 4) {
+              temp <- 
+                temp %>% 
+                filter(MONTH != 9)
+            }
+            
+            temp <-
+              temp %>% 
+              rename_all(toupper) %>% 
+              mutate(
+                TOTALKBTU = ifelse(
+                  substr(CUSTOMERCLASS,1,1) == "E",
+                  TOTALKWH * 3.412,
+                  TOTALTHM * 99.976
+                ),
+                TOTALTCO2E = ifelse(
+                  substr(CUSTOMERCLASS,1,1) == "E",
+                  TOTALKWH/1000 * factor * 0.000453592,
+                  TOTALTHM * 0.00531
+                )
+              ) %>% 
+              select(
+                ZIPCODE,
+                YEAR,
+                MONTH,
+                CUSTOMERCLASS,
+                TOTALKBTU,
+                TOTALTCO2E,
+                TOTALCUSTOMERS
+              )
+            
+          })
+        
+      })
+    
+  })
+```
+
+```{r}
+pge_data <- readRDS("pge_data.rds")
+```
+
+```{r, eval=FALSE}
+sj_pge_data <-
+  pge_data %>% 
+  filter(ZIPCODE == "95113"  | ZIPCODE == "95112") %>% 
+  filter(CUSTOMERCLASS %in% c(
+    "Elec- Commercial",
+    "Elec- Residential",
+    "Gas- Commercial",
+    "Gas- Residential"
+  )) %>% 
+  mutate(
+    ENERGYTYPE = CUSTOMERCLASS # switched b/c we are supposed cc to have that as well
+  ) %>% 
+  group_by(ZIPCODE, ENERGYTYPE, YEAR) %>% 
+  summarize(
+    TOTALKBTU = sum(TOTALKBTU, na.rm=T),
+    TOTALTCO2E = sum(TOTALTCO2E, na.rm=T), 
+    TOTALCUSTOMERS = mean(TOTALCUSTOMERS, na.rm=T)
+  ) %>% 
+  group_by(ENERGYTYPE, YEAR) %>% 
+  summarize(across(
+    c(TOTALKBTU,TOTALTCO2E,TOTALCUSTOMERS),
+    ~sum(.,na.rm=T)
+  ))
+saveRDS(sj_pge_data, paste0(path,"sj_pge_data.rds"))
+```
+
+```{r}
+sj_pge_data <- readRDS("sj_pge_data.rds")
+```
+
+
+```{r}
+ggplot(
+  sj_pge_data, 
+  aes(
+    x = as.factor(YEAR), 
+    y = TOTALKBTU/1000000
+  )
+) + 
+  geom_bar(stat = "identity", aes(fill = ENERGYTYPE), position = "dodge") + 
+  labs(x = "Year", y = "GBTU", title = "Downtown San Jose (95112 & 95113) Annual Energy Usage, 2013 to 2019") + 
+  scale_fill_discrete(name="Energy Type")
+```
+
+```{r}
+ggplot(
+  sj_pge_data, 
+  aes(
+    x = as.factor(YEAR), 
+    y = TOTALTCO2E
+  )
+) + 
+  geom_bar(stat = "identity", aes(fill = ENERGYTYPE), position = "dodge") + 
+  labs(x = "Year", y = "tCO2e", title = "Downtown San Jose (95112 & 95113) Annual Energy Usage, 2013 to 2019") + 
+  scale_fill_discrete(name="Energy Type")
+```
+
+```{r, eval=F}
+#normalize for population 
+us_zips <- 
+  zctas(cb = T, progress_bar = F)
+
+zip <- us_zips %>% 
+  filter(GEOID10 %in% c("95112", "95113"))
+
+ca_tracts <- tracts("CA")
+
+zip_tracts <- ca_tracts %>% 
+  st_centroid() %>% 
+  .[zip, ] %>%
+  st_set_geometry(NULL) 
+```
+
+```{r,eval=FALSE}
+pop_data <-
+  2013:2019 %>% 
+  map_dfr(function(x){ 
+  
+    temp_pop <-  
+      getCensus(
+        name = "acs/acs5",
+        vintage = x,
+        region = "tract:*",
+        regionin = "state:06+county:085",
+        vars = "C02003_001E"
+      ) %>%
+      mutate(
+        GEOID = paste0(state,county,tract)
+      )
+    
+    temp <- 
+      zip_tracts %>%
+      left_join(temp_pop) %>%
+      summarise(pop = sum(C02003_001E)) %>%
+      mutate(YEAR = x)
+    
+  })
+
+saveRDS(pop_data, paste0(path,"pop_data.rds"))
+```
+
+```{r}
+pop_data <- readRDS("pop_data.rds")
+```
+
+```{r}
+job_count <- read_rds(paste0(path,"job_count.rds"))
+
+HDDs <- readRDS(paste0(path,"HDDs.rds")) %>% 
+  rename(HDD = CanESM2..Average.) %>% 
+  select(-3:-5)
+
+CDDs <- readRDS(paste0(path,"CDDs.rds")) %>% 
+  rename(CDD = CanESM2..Average.) %>% 
+  select(-3:-5)
+```
+
+```{r, eval=F}
+sj_pge_data_pop_norm <- sj_pge_data %>%
+  left_join(pop_data, by = "YEAR") %>%
+  left_join(job_count, by = "YEAR") %>%
+  left_join(HDDs, by = c("YEAR" = "year")) %>% 
+  left_join(CDDs, by = c("YEAR" = "year")) %>% 
+  mutate(
+    Pop_Norm_kBTU = case_when(
+      ENERGYTYPE %in% c("Elec- Commercial", "Gas- Commercial") ~ TOTALKBTU / JOB,
+      ENERGYTYPE %in% c("Elec- Residential", "Gas- Residential") ~ TOTALKBTU / pop
+      ),
+    Pop_Norm_kBTU_HDDs = Pop_Norm_kBTU / HDD,
+    Pop_Norm_kBTU_CDDs = Pop_Norm_kBTU / CDD
+  )
+saveRDS(sj_pge_data_pop_norm, paste0(path,"sj_pge_data_pop_norm.rds"))
+```
+
+
+```{r}
+sj_pge_data_pop_norm <- readRDS(paste0(path,"sj_pge_data_pop_norm.rds"))
+
+```
+
+
+```{r}
+
+building_emis <- readRDS(paste0(path,"sj_pge_data.rds")) %>%
+  select(`Emission Category` = ENERGYTYPE, CO2E = TOTALTCO2E, Year = YEAR)
+
+norm_build_energy_use <- readRDS(paste0(path, "sj_pge_data_pop_norm.rds"))
+  
+  
+vehicle_emis <- readRDS(paste0(path,"SJ_ghg_veh.rds")) %>% 
+  rename(CO2E = emissions, Year = year) %>% 
+  mutate(`Emission Category` = "Vehicle")
+```
+
+
+```{r}
+emissions <- building_emis %>% rbind(vehicle_emis)
+```
+
+
+```{r}
+stacked_emis_gg <- emissions %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = Year %>% factor(),
+      y = CO2E,
+      fill = `Emission Category`
+    ),
+    stat = "identity",
+    position = "stack"
+  ) +
+  labs(
+    x = "Year",
+    y = "CO2-eq Emissions [tons]",
+    title = "Downtown San Jose Emissions",
+    fill = "Emission Category"
+  ) 
+  
+stacked_emis <- ggplotly(stacked_emis_gg, tooltip="y")
+stacked_emis
+```
+
+
+
+```{r}
+prop_emis_gg <- emissions %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = Year %>% factor(),
+      y = CO2E,
+      fill = `Emission Category`
+    ),
+    stat = "identity",
+    position = "fill"
+  ) +
+  labs(
+    x = "Year",
+    y = "CO2-eq Emissions [tons]",
+    title = "Downtown San Jose CO2 Emissions Per Year",
+    fill = "Emission Category"
+  ) 
+prop_emis <- ggplotly(prop_emis_gg, tooltip="y")
+prop_emis
+```
+
+##Total Annual Greenhouse Gas (GHG) Emissions
+```{r}
+an_veh_emis_gg <- 
+    vehicle_emis %>%
+  ggplot() +
+  
+    geom_bar(
+    aes(
+      x = Year %>% factor(),
+      y = CO2E), 
+    stat = "identity", 
+    position = "dodge"
+    ) +
+  
+  geom_line(
+    aes(
+      x = Year %>% factor(),
+      y = CO2E,
+      color = `Emission Category`,
+      group = `Emission Category`,
+    )
+  ) +
+  
+  labs(x = "Year",
+       y = "Annual Emissions [tonnes]", 
+       title = "Downtown San Jose Vehicle Emissions, 2013 to 2019") + 
+  theme(legend.position = "none") 
+
+an_veh_emis_gg
+
+```
+
+
+```{r}
+an_veh_emis_zoom_gg <- 
+    vehicle_emis %>%
+  ggplot() +
+  geom_line(
+    aes(
+      x = Year %>% factor(),
+      y = CO2E,
+      color = `Emission Category`,
+      group = `Emission Category`,
+    )
+  ) +
+  labs(x = "Year",
+       y = "Annual Emissions [tons]", 
+       title = "Downtown San Jose Vehicle Emissions, 2013 to 2019") + 
+  theme(legend.position = "none") 
+an_veh_emis_zoom <-ggplotly(an_veh_emis_zoom_gg, tooltip = "y")
+an_veh_emis_zoom
+```
+
+#Annual GHG Emissions Per Trip 
+```{r}
+ave_veh_emis_gg <- 
+    vehicle_emis %>%
+  ggplot() +
+  
+    geom_bar(
+    aes(
+      x = Year %>% factor(),
+      y = mean_emissions), 
+    stat = "identity", 
+    position = "dodge"
+    ) +
+  
+  geom_line(
+    aes(
+      x = Year %>% factor(),
+      y = mean_emissions,
+      color = `Emission Category`,
+      group = `Emission Category`,
+    )
+  ) +
+  
+  labs(x = "Year",
+       y = "Average Emissions [tons]", 
+       title = "Avg Downtown San Jose Vehicle Emissions, 2013 to 2019") + 
+  theme(legend.position = "none") 
+ave_veh_emis_gg
+
+```
+
+```{r}
+ave_veh_emis_zoom_gg <- 
+    vehicle_emis %>%
+  ggplot() +
+  geom_line(
+    aes(
+      x = Year %>% factor(),
+      y = mean_emissions,
+      color = `Emission Category`,
+      group = `Emission Category`,
+    )
+  ) +
+  labs(x = "Year",
+       y = "Average Emissions [tons]", 
+       title = "Avg Downtown San Jose Vehicle Emissions, 2013 to 2019") + 
+  theme(legend.position = "none")
+ave_veh_emis_zoom <-ggplotly(ave_veh_emis_zoom_gg, tooltip = "y")
+ave_veh_emis_zoom
+```
+## Heating and Cooling Degree Days
+
+
+```{r}
+
+# only have heating with gas
+hdd_norm <- norm_build_energy_use %>% 
+  select(ENERGYTYPE, YEAR, value = Pop_Norm_kBTU_HDDs) %>%
+  filter(ENERGYTYPE %in% c("Gas- Residential", "Gas- Commercial")) %>%
+  mutate(units = case_when(
+    ENERGYTYPE %in% c("Gas- Residential") ~ "kBTU/resident/HDD",
+    ENERGYTYPE %in% c("Gas- Commercial") ~ "kBTU/job/HDD",
+  ))
+# only have cooling with electricity
+cdd_norm <- norm_build_energy_use %>% 
+  select(ENERGYTYPE, YEAR, value = Pop_Norm_kBTU_CDDs) %>%
+  filter(ENERGYTYPE %in% c("Elec- Residential", "Elec- Commercial")) %>%
+  mutate(units = case_when(
+    ENERGYTYPE %in% c("Elec- Residential") ~ "kBTU/resident/CDD",
+    ENERGYTYPE %in% c("Elec- Commercial") ~ "kBTU/job/CDD",
+  ))
+norm_energy_use <- hdd_norm %>% rbind(cdd_norm)
+rm(hdd_norm, cdd_norm)
+```
+
+```{r}
+norm_energy_plot_gg <- 
+    norm_energy_use %>%
+  ggplot() +
+  geom_line(
+    aes(
+      x = YEAR %>% factor(),
+      y = value,
+      color = units,
+      group = units,
+    )
+  ) +
+  labs(
+    x = "Year",
+    y = "Normalized Energy Use [kBTU]",
+    title = "Population and Temperature Normalized Energy Use ",
+    color = "Normalized"
+  ) 
+norm_energy_plot <-ggplotly(norm_energy_plot_gg, tooltip = "y")
+norm_energy_plot
+```
+
+
+
