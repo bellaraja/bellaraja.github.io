@@ -1,0 +1,726 @@
+---
+title: '5.1.4 Sea Level Rise + 5.2'
+author: "Bella Raja"
+date: "2/17/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(sf)
+library(leaflet)
+library(mapboxapi)
+library(raster)
+library(stars)
+library(censusapi)
+library(tigris)
+library(stars)
+library(plotly)
+```
+
+```{r}
+#notes -- don't be arguing about models -- ring bell / alarm about climate change 
+#how far out for you plan with uncertainty
+
+```
+
+```{r}
+slr <- 25
+rp <- 20
+
+```
+
+```{r}
+#data_path <- paste0("/Volumes/GoogleDrive/Shared drives/SFBI/Data Library/OCOF/san_mateo_flooding_slr",str_pad(slr, 3, "left", "0"),"/flooding/v2.1/county_san_mateo_flddepth_slr",str_pad(slr, 3, "left", "0"),"_w",str_pad(rp, 3, "left", "0"),".tif")
+
+data_path <- paste0("/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/4A/data/")
+
+path<- paste0("/Volumes/GoogleDrive/Shared drives/SFBI/Data Library/")
+
+```
+
+
+```{r}
+test_flood <- raster(data_path)
+```
+
+```{r}
+fc_boundary <- places("CA") %>% 
+  filter(NAME == "Foster City")
+
+test_flood_fc <- test_flood %>% 
+  crop(
+    fc_boundary %>% 
+      st_transform(26910) %>% 
+      st_bbox()
+  )
+```
+
+```{r}
+plot(test_flood_fc)
+```
+
+```{r}
+flood_pal <- colorNumeric(
+  palette = "Blues",
+  domain = values(test_flood_fc),
+  na.color = "transparent"
+)
+
+leaflet() %>% 
+  addMapboxTiles(
+    style_id = "satellite-streets-v11",
+    username = "mapbox",
+    options = tileOptions(opacity = 0.5)
+  ) %>% 
+  addRasterImage(
+    test_flood_fc,
+    colors = flood_pal
+  ) %>% 
+  addLegend(
+    pal = flood_pal,
+    values = values(test_flood_fc),
+    title = "Flood depth, cm"
+  )
+```
+```{r}
+for(slr in c("000","025","050")){
+  
+  for(rp in c("001","020","100")){
+    
+    print(paste0("SLR",slr,"_RP",rp))
+    
+    #path_f <- paste0("san_mateo_flooding_slr",slr,"/flooding/v2.1/county_san_mateo_flddepth_slr",slr,"_w",rp,".tif")
+   # "/Volumes/GoogleDrive/Shared drives/SFBI/Data Library/OCOF/san_mateo_flooding_slr",str_pad(slr, 3, "left", "0"),"/flooding/v2.1/county_san_mateo_flddepth_slr",str_pad(slr, 3, "left", "0"),"_w",str_pad(rp, 3, "left", "0"),".tif")
+   
+ path_f <- paste0("/Volumes/GoogleDrive/Shared drives/SFBI/Data Library/OCOF/san_mateo_flooding_slr",slr,"/flooding/v2.1/county_san_mateo_flddepth_slr",slr,"_w",rp,".tif")
+    
+    flood <- raster(path_f) %>% 
+      crop(
+        fc_boundary %>% 
+          st_transform(26910) %>% 
+          st_bbox()
+      )
+    
+    writeRaster(flood, paste0("flood/SLR",slr,"_RP",rp,"_fc_flood.tif"), overwrite = T)
+    
+  }
+}
+```
+
+
+5.2
+
+```{r, eval =F}
+osm_bldg <- st_read(paste0(path,"OSM/gis_osm_buildings_a_free_1.shp"))
+
+fc_boundary <- 
+  places("CA", cb = T, progress_bar = F) %>% 
+  filter(NAME == "Foster City") %>% 
+  st_transform(4326)
+
+fc_bldg <- osm_bldg[fc_boundary, ]
+saveRDS(fc_bldg, "fc_bldg.rds")
+```
+```{r}
+#fc_bldg <- paste0("/Volumes/GoogleDrive/Shared with me/Assignments/4a/data/fc_bldg.rds")
+fc_bldg <- readRDS("fc_bldg.rds")
+```
+
+```{r}
+writeRaster(flood, paste0("flood/SLF",slr,"_RP",rp,"_fc_flood.tif"), overwrite = T)
+```
+
+```{r}
+flood_max <- 
+  raster("flood/SLR050_RP100_fc_flood.tif")
+
+flood_max_extent <- 
+  flood_max %>% 
+  st_as_stars() %>% 
+  mutate(SLR050_RP100_fc_flood = ifelse(
+    !is.na(SLR050_RP100_fc_flood),
+    1,
+    NA
+  )) %>% 
+  st_as_sf(merge = T) %>% 
+  st_set_crs(26910) %>% 
+  st_buffer(0)%>% 
+  st_make_valid() %>%
+  st_transform(4326)
+
+fc_bldg_flooded_max <-
+  fc_bldg %>% 
+  st_transform(4326) %>% 
+  .[flood_max_extent,]
+saveRDS(fc_bldg_flooded_max, "fc_bldg_flooded_max.rds")
+```
+
+```{r}
+fc_bldg_flooded_max <- readRDS("fc_bldg_flooded_max.rds")
+```
+
+
+```{r}
+flood_pal <- colorNumeric(
+  palette = "Blues",
+  domain = values(flood_max),
+  na.color = "transparent"
+)
+
+leaflet() %>% 
+  addMapboxTiles(
+    style_id = "satellite-streets-v11",
+    username = "mapbox",
+    options = tileOptions(opacity = 0.5)
+  ) %>% 
+  addRasterImage(
+    flood_max,
+    colors = flood_pal,
+    opacity = 0.75,
+    maxBytes = Inf
+  ) %>% 
+  addPolygons(
+    data = fc_bldg_flooded_max,
+    fill = F,
+    color = "red",
+    weight = 0.5
+  ) %>% 
+  addLegend(
+    pal = flood_pal,
+    values = values(flood_max),
+    title = "Flood depth, cm"
+  )
+```
+
+```{r}
+fc_bldg_exposure <- NULL
+
+for(slr in c("000","025","050")){
+  
+  for(rp in c("001","020","100")){
+    
+    print(paste0("SLR",slr,"_RP",rp))
+    
+    flood <- raster(paste0("flood/SLR",slr,"_RP",rp,"_fc_flood.tif"))
+    
+    flood_extent <- 
+      (flood > -Inf) %>% 
+      st_as_stars() %>% 
+      st_as_sf(merge = T) %>% 
+      st_set_crs(26910) %>% 
+      st_buffer(0) %>%
+      st_make_valid() %>% 
+      st_transform(4326)
+    
+    fc_bldg_flooded <-
+      fc_bldg_flooded_max[flood_extent,] %>% 
+      st_transform(26910)
+    
+    flood_crop <-
+      crop(flood, fc_bldg_flooded)
+    
+    flood_crop[is.na(flood_crop)] <- 0
+    
+    temp <-
+      extract(
+        flood_crop,
+        fc_bldg_flooded,
+        fun = mean
+      ) %>% 
+      as.data.frame() %>% 
+      rename(avg_depth = V1) %>% 
+      cbind(
+        fc_bldg_flooded %>% 
+          st_drop_geometry() %>% 
+          dplyr::select(osm_id)
+      ) %>% 
+      mutate(
+        SLR = slr,
+        RP = rp
+      )
+    
+    fc_bldg_exposure <- 
+      fc_bldg_exposure %>% 
+      rbind(temp)
+    
+    
+  }
+}
+saveRDS(fc_bldg_exposure,"fc_bldg_exposure.rds")
+```
+
+```{r}
+#creates a data frame
+#gets buildings impacted by floods
+
+fc_bldg_exposure <- NULL
+
+for(slr in c("000","025","050")){
+  
+  for(rp in c("001","020","100")){
+    
+    print(paste0("SLR",slr,"_RP",rp))
+    
+    flood <- raster( paste0("flood/SLR",slr,"_RP",rp,"_fc_flood.tif"))
+
+    flood_extent <- 
+      (flood > -Inf) %>% 
+      st_as_stars() %>% 
+      st_as_sf(merge = T) %>% 
+      st_set_crs(26910) %>% 
+      st_make_valid() %>% 
+      st_transform(4326)
+
+    fc_bldg_flooded <-
+      fc_bldg_flooded_max[flood_extent,] %>% 
+      st_transform(26910)
+    
+    flood_crop <-
+      crop(flood, fc_bldg_flooded)
+    
+    flood_crop[is.na(flood_crop)] <- 0
+    
+    temp <-
+      extract(
+        flood_crop,
+        fc_bldg_flooded,
+        fun = mean
+      ) %>% 
+      as.data.frame() %>% 
+      rename(avg_depth = V1) %>% 
+      cbind(
+        fc_bldg_flooded %>% 
+          st_drop_geometry() %>% 
+          dplyr::select(osm_id)
+      ) %>% 
+      mutate(
+        SLR = slr,
+        RP = rp
+      )
+    
+    fc_bldg_exposure <- 
+      fc_bldg_exposure %>% 
+      rbind(temp)
+    
+  }
+}
+saveRDS(fc_bldg_exposure,"fc_bldg_exposure.rds")
+```
+
+```{r}
+#fc_bldg_exposure <- readRDS ("fc_bldg_exposure.rds")
+fc_bldg_exposure_raw <- readRDS(paste0(data_path,"fc_bldg_exposure.rds"))
+```
+5.3 - vulnerability
+```{r}
+vulnerability <- data.frame(
+  depth = c(-2:16),
+  perc_damage = c(
+    0,
+    0.025,
+    0.134,
+    0.233,
+    0.321,
+    0.401,
+    0.471,
+    0.532,
+    0.586,
+    0.632,
+    0.672,
+    0.705,
+    0.732,
+    0.754,
+    0.772,
+    0.785,
+    0.795,
+    0.802,
+    0.807
+  )
+)
+```
+
+
+```{r}
+fc_bldg_exposure <- 
+  fc_bldg_exposure_raw %>% 
+  mutate(
+    avg_depth = avg_depth*0.0328084 - 2 # cm to ft, subtract first floor elevation
+  )
+
+fc_bldg_perc_damage <- 
+  approx(
+    x = vulnerability$depth,
+    y = vulnerability$perc_damage,
+    xout = fc_bldg_exposure$avg_depth
+  ) %>% 
+  .[2] %>% 
+  as.data.frame() %>% 
+  rename(perc_damage = y) %>% 
+  cbind(fc_bldg_exposure)
+
+saveRDS(fc_bldg_perc_damage,"fc_bldg_perc_damage.rds")
+```
+
+```{r}
+fc_bldg_perc_damage_plot <- 
+  expand.grid(
+    osm_id = unique(fc_bldg_perc_damage$osm_id),
+    SLR = unique(fc_bldg_perc_damage$SLR),
+    RP = unique(fc_bldg_perc_damage$RP)
+  ) %>% 
+  left_join(fc_bldg_perc_damage) %>% 
+  mutate(
+    avg_depth = ifelse(
+      is.na(avg_depth),
+      -2,
+      avg_depth
+    ),
+    perc_damage = ifelse(
+      is.na(perc_damage),
+      0,
+      perc_damage
+    )
+  )
+```
+
+```{r}
+fc_plot <- 
+  plot_ly() %>% 
+  add_trace(
+    data = 
+      fc_bldg_perc_damage_plot %>% 
+        filter(RP == "100") %>% 
+        mutate(SLR = SLR %>% as.numeric()),
+    x = ~avg_depth,
+    y = ~perc_damage,
+    frame = ~SLR,
+    type = 'scatter',
+    mode = 'markers',
+    marker = list(
+      color = 'rgba(17, 157, 255, 0.01)',
+      size = 15
+    ),
+    showlegend = F
+  ) %>% 
+  add_trace(
+    data = vulnerability,
+    x = ~depth,
+    y = ~perc_damage,
+    type = 'scatter',
+    mode = 'markers',
+    marker = list(
+      color = 'rgb(0,0,0)'
+    ),
+    showlegend = F
+  ) %>% 
+  layout(
+    xaxis = list(
+      title = "Average Flood Depth",
+      zeroline = FALSE
+    ),
+    yaxis = list(
+      title = "Percent Damage"
+    ),
+    title = "Foster City building damage during<br>100-year storm, by base sea level rise"
+  ) %>% 
+  config(displayModeBar = F)
+```
+
+```{r}
+fc_plot
+```
+
+5.4 risk estimation
+```{r}
+projection <- "+proj=utm +zone=10 +ellps=GRS80 +datum=NAD83 +units=ft +no_defs"
+
+fc_bldg_flooded_max <- 
+  readRDS("fc_bldg_flooded_max.rds") %>% 
+  st_transform(projection) %>% 
+  mutate(
+    area = st_area(.) %>% as.numeric()
+  )
+
+fc_bldg_perc_damage <- readRDS("fc_bldg_perc_damage.rds")
+
+fc_bldg_damage <-
+  fc_bldg_perc_damage %>% 
+  left_join(
+    fc_bldg_flooded_max %>%
+      st_drop_geometry() %>% 
+      select(osm_id, area)
+  ) %>% 
+  mutate(
+    damage = area * 200 * perc_damage
+  ) %>% 
+  select(osm_id, SLR, RP, damage)
+```
+
+```{r}
+head(fc_bldg_damage)
+```
+
+```{r}
+fc_bldg_aal_by_slr <-
+  fc_bldg_damage %>% 
+  pivot_wider(
+    names_from = RP,
+    values_from = damage
+  ) %>% 
+  replace(is.na(.), 0) %>% 
+  mutate(
+    damage = 
+      0.95*(`001`+`020`)/2 + 
+      0.04*(`020`+`100`)/2 + 
+      0.01*(`100`)
+  ) %>% 
+  select(osm_id, SLR, damage)
+```
+
+```{r}
+head(fc_bldg_aal_by_slr)
+```
+
+```{r}
+rcp45 <- read_csv("https://raw.githubusercontent.com/stanfordfuturebay/stanfordfuturebay.github.io/master/advanced/rcp45_sanfrancisco.csv")
+
+rcp45
+```
+
+```{r}
+fc_bldg_aal_by_year <- 
+  fc_bldg_aal_by_slr %>% 
+  left_join(
+    rcp45 %>% 
+      mutate(
+        SLR = str_pad(SLR, 3 , "left", "0")
+      ) %>% 
+      select(
+        SLR,
+        `2020`,
+        `2030`,
+        `2040`,
+        `2050`
+      )
+  ) %>% 
+  pivot_longer(
+    `2020`:`2050`,
+    names_to = "year",
+    values_to = "occurrence"
+  ) %>% 
+  pivot_longer(
+    c(damage,occurrence),
+    names_to = "key",
+    values_to = "value"
+  ) %>% 
+  pivot_wider(
+    names_from = c("key","SLR"),
+    values_from = value
+  ) %>% 
+  replace(is.na(.), 0) %>% 
+  mutate(
+    damage = 
+      occurrence_000 * (damage_000 + damage_025)/2 + 
+      occurrence_025 * (damage_025 + damage_050)/2 + 
+      occurrence_050 * (damage_050)
+  ) %>% 
+  select(osm_id, year, damage)
+```
+
+```{r}
+head(fc_bldg_aal_by_year)
+```
+
+```{r}
+fc_bldg_aal_by_year_map <-
+  fc_bldg_aal_by_year %>% 
+  pivot_wider(
+    names_from = year,
+    values_from = damage
+  ) %>% 
+  mutate(
+    change = `2050`-`2020`
+  ) %>% 
+  left_join(
+    fc_bldg_flooded_max %>%
+      select(osm_id)
+  ) %>% 
+  st_as_sf() %>% 
+  st_transform(4326)
+```
+```{r}
+aal_pal <- colorNumeric(
+  palette = "Reds",
+  domain = c(0,fc_bldg_aal_by_year_map$`2050`)
+)
+
+fc_bldg_aal_by_year_map %>% 
+  leaflet() %>% 
+  addMapboxTiles(
+    style_id = "light-v9",
+    username = "mapbox"
+  ) %>% 
+  addPolygons(
+    fillColor = ~aal_pal(`2020`),
+    color = "gray",
+    fillOpacity = 1,
+    opacity = 1,
+    weight = 0.25,
+    highlightOptions = highlightOptions(
+      color = "white",
+      weight = 2
+    ),
+    label = ~paste0("$",prettyNum(signif(`2020`,2),",")," average annualized loss in 2020"),
+    group = "2020"
+  ) %>% 
+  addPolygons(
+    fillColor = ~aal_pal(`2050`),
+    color = "gray",
+    fillOpacity = 1,
+    opacity = 1,
+    weight = 0.25,
+    highlightOptions = highlightOptions(
+      color = "white",
+      weight = 2
+    ),
+    label = ~paste0("$",prettyNum(signif(`2050`,2),",")," average annualized loss in 2050"),
+    group = "2050"
+  ) %>% 
+  addPolygons(
+    fillColor = ~aal_pal(change),
+    color = "gray",
+    fillOpacity = 1,
+    opacity = 1,
+    weight = 0.25,
+    highlightOptions = highlightOptions(
+      color = "white",
+      weight = 2
+    ),
+    label = ~paste0("$",prettyNum(signif(change,2),",")," change in average annualized loss from 2020 to 2050"),
+    group = "Change"
+  ) %>% 
+  addLegend(
+    pal = aal_pal,
+    values = ~`2050`,
+    title = "AAL"
+  ) %>% 
+  addLayersControl(
+    baseGroups = c("2020","2050","Change"),
+    options = layersControlOptions(collapsed = FALSE)
+  ) %>% 
+  showGroup("2050")
+```
+
+
+```{r}
+fc_boundary <- 
+  places("CA", cb = T, progress_bar = F) %>% 
+  filter(NAME == "Foster City")
+
+fc_bgs <- 
+  block_groups("CA", "San Mateo", progress_bar = F) %>% 
+  select(GEOID) %>% 
+  .[fc_boundary, ]
+```
+
+```{r}
+fc_bg_aal <-
+  fc_bldg_aal_by_year %>% 
+  pivot_wider(
+    names_from = year,
+    values_from = damage
+  ) %>% 
+  mutate(
+    aal = (`2020`*5 + `2030`*10 + `2040`*10 + `2050`*5)/30
+  ) %>% 
+  left_join(
+    fc_bldg_flooded_max %>%
+      select(osm_id) %>% 
+      st_centroid()
+  ) %>% 
+  st_as_sf() %>% 
+  st_transform(4269) %>% 
+  st_join(fc_bgs) %>% 
+  st_set_geometry(NULL) %>% 
+  group_by(GEOID) %>% 
+  summarize(
+    aal = sum(aal),
+    count = n()
+  ) %>% 
+  left_join(fc_bgs) %>% 
+  st_as_sf()
+```
+
+```{r}
+aal_pal <- colorNumeric(
+  palette = "Reds",
+  domain = fc_bg_aal$aal
+)
+
+fc_bg_aal %>% 
+  leaflet() %>% 
+  addMapboxTiles(
+    style_id = "light-v9",
+    username = "mapbox"
+  ) %>% 
+  addPolygons(
+    fillColor = ~aal_pal(aal),
+    color = "gray",
+    fillOpacity = 0.5,
+    opacity = 1,
+    weight = 0.25,
+    highlightOptions = highlightOptions(
+      color = "white",
+      weight = 2
+    ),
+    label = ~paste0("$",prettyNum(signif(aal,2),",")," average annualized loss across ", count, " buildings, 2020-2050")
+  ) %>% 
+  addLegend(
+    pal = aal_pal,
+    values = ~aal,
+    title = "AAL, 2020-2050"
+  )
+```
+
+
+
+
+emfac
+```{r}
+EMFAC <- read.csv(paste0(path,"/EMFAC2021-EI-202xClass-BayAreaAQMD2013-2014-2015-2016-2017-2018-2019-Summer-20220204082533.csv"), skip = 8) %>% #skip first 8 lines bc of data issue
+  transmute(
+    Category = Vehicle.Category,
+    Fuel_Type = Fuel,
+    Percent_Trips = Trips/sum(Trips),
+    Percent_Miles = `Total.VMT`/sum(Total.VMT),
+    `MTCO2_Running_Exhaust` = CO2_RUNEX/Total.VMT,
+    `MTCO2_Start_Exhaust` = CO2_STREX/Trips
+  )
+```
+
+
+
+Part 3 
+cbgs
+```{r}
+smc_cbgs <- block_groups("CA", "San Mateo", cb = T, progress_bar = F)
+
+fc_cbg <- 
+  smc_cbgs %>% 
+  filter(GEOID == "060750614001")
+```
+
+
+
+
+
+
+
+
+
+
