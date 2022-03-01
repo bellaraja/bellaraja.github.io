@@ -1,12 +1,12 @@
 ---
 title: 'Sea Level Rise 2020 - 2050 in Foster City'
-author: "Bella Raja"
+author: "Bella Raja in collaboration with Merrick and Awoe"
 date: "2/17/2022"
 output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = FALSE)
 ```
 
 ```{r}
@@ -469,6 +469,9 @@ fc_bldg_perc_damage <-
 saveRDS(fc_bldg_perc_damage,"fc_bldg_perc_damage.rds")
 ```
 
+```{r}
+fc_bldg_perc_damage <- readRDS("fc_bldg_perc_damage.rds")
+```
 
 ```{r}
 fc_bldg_perc_damage_plot <- 
@@ -719,6 +722,11 @@ fc_veh_aal_by_slr <-
 ## Average Annualized Loss from Sea Level Rise
 # Buildings
 ```{r}
+
+rcp45 <- read_csv("https://raw.githubusercontent.com/stanfordfuturebay/stanfordfuturebay.github.io/master/advanced/rcp45_sanfrancisco.csv")
+
+rcp45
+
 projection <- "+proj=utm +zone=10 +ellps=GRS80 +datum=NAD83 +units=ft +no_defs"
 
 fc_bldg_flooded_max <- 
@@ -806,12 +814,6 @@ head(fc_bldg_aal_by_year)
 ```
 
 #Vehicles
-```{r}
-
-rcp45 <- read_csv("https://raw.githubusercontent.com/stanfordfuturebay/stanfordfuturebay.github.io/master/advanced/rcp45_sanfrancisco.csv")
-
-rcp45
-```
 
 ```{r}
 fc_veh_aal_by_year <- 
