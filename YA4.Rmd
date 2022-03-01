@@ -9,7 +9,7 @@ output: html_document
 knitr::opts_chunk$set(echo = FALSE)
 ```
 
-```{r}
+```{r, include=FALSE, progress=F}
 library(tidyverse)
 library(sf)
 library(tidycensus)
@@ -26,11 +26,11 @@ library(tigris)
 library(knitr)
 Sys.setenv(CENSUS_KEY = "ffe5c482aad3c87fd918ba8a6bd5967ae4228456")
 ```
-##Sea Level Rise and Flooding in Foster City
+## Sea Level Rise and Flooding in Foster City
 The Stanford Urban Risk Framework (SURF) analyzes risk estimation given hazard, exposure, and vulnerability data.
 I assess Foster City's risk with Sea Level Rise and occurrence of flooding through the lens of SURF.
 
-```{r}
+```{r, include=FALSE, progress=F}
 slr <- 25
 rp <- 20
 
@@ -41,9 +41,7 @@ path<- paste0("/Volumes/GoogleDrive/Shared drives/SFBI/Data Library/")
 
 
 test_flood <- raster(paste0("/Volumes/GoogleDrive/Shared drives/SFBI/Data Library/OCOF/san_mateo_flooding_slr",str_pad(slr, 3, "left", "0"),"/flooding/v2.1/county_san_mateo_flddepth_slr",str_pad(slr, 3, "left", "0"),"_w",str_pad(rp, 3, "left", "0"),".tif"))
-```
 
-```{r}
 fc_boundary <- places("CA") %>% 
   filter(NAME == "Foster City")
 
@@ -366,7 +364,7 @@ smc_bg_vehicle_table <- smc_bg_vehicle %>%
 
 ```
 
-```{r}
+```{r,warning=FALSE, include=F}
 #id flaw in method w/ apartments
 
 fc_block_veh_per_bldg <-
@@ -392,7 +390,7 @@ fc_block_veh_per_bldg <-
 ```
 
 
-```{r}
+```{r,include=FALSE, progress=F}
 # dataset with individual buildings, vehicle counts for each building
 fc_veh_per_bldg <- fc_bldgs %>% 
   filter(is.na(type) | type %in% c("residential", "house", "apartments")) %>% 
@@ -405,7 +403,7 @@ saveRDS(fc_veh_per_bldg, "fc_veh_per_bldg.rds")
 fc_veh_per_bldg <- readRDS("fc_veh_per_bldg.rds") 
 ```
 
-```{r}
+```{r, include=FALSE, progress=F}
 fc_veh_exposure <- fc_bldg_exposure_raw %>% 
   left_join(fc_veh_per_bldg %>% 
               st_set_geometry(NULL) %>% 
@@ -721,7 +719,7 @@ fc_veh_aal_by_slr <-
 
 ## Average Annualized Loss from Sea Level Rise
 # Buildings
-```{r}
+```{r, include=FALSE, progress=F}
 
 rcp45 <- read_csv("https://raw.githubusercontent.com/stanfordfuturebay/stanfordfuturebay.github.io/master/advanced/rcp45_sanfrancisco.csv")
 
@@ -749,9 +747,7 @@ fc_bldg_damage <-
     damage = area * 200 * perc_damage
   ) %>% 
   select(osm_id, SLR, RP, damage)
-```
 
-```{r}
 fc_bldg_aal_by_slr <-
   fc_bldg_damage %>% 
   pivot_wider(
@@ -766,10 +762,7 @@ fc_bldg_aal_by_slr <-
       0.01*(`100`)
   ) %>% 
   select(osm_id, SLR, damage)
-```
 
-
-```{r}
 fc_bldg_aal_by_year <- 
   fc_bldg_aal_by_slr %>% 
   left_join(
@@ -813,9 +806,9 @@ fc_bldg_aal_by_year <-
 head(fc_bldg_aal_by_year)
 ```
 
-#Vehicles
+# Vehicles
 
-```{r}
+```{r,include=FALSE, progress=F}
 fc_veh_aal_by_year <- 
   fc_veh_aal_by_slr %>% 
   left_join(
@@ -855,7 +848,7 @@ fc_veh_aal_by_year <-
   select(osm_id, year, damage)
 ```
 # Average Annualized Loss for Vehicles from 2020-2050
-```{r}
+```{r, include=FALSE, progress=F}
 aal_veh_plot <-
   fc_veh_aal_by_year %>% 
   ggplot() +
@@ -890,7 +883,7 @@ EMFAC <- read.csv("EMFAC2021-EI-202xClass-SanMateo2020-2030-2040-2050-Annual-202
 
 Using EMFAC data and projection, we can also compare how many vehicles there will be in Foster City over time and use this in the analysis of vehicle damages due to sea level rise and flooding. 
 
-```{r}
+```{r, include=FALSE, progress=F}
 vehicle_incr <- EMFAC %>%
   group_by(Calendar.Year) %>%
   summarise(vehic_count = sum(Population)) %>%
@@ -901,13 +894,17 @@ vehicle_incr <- vehicle_incr %>%
     perc_incr = vehic_count / vehicle_incr$vehic_count[1],
     year = as.character(year)
   )
+```
+
+
+```{r, include=FALSE, progress=F}
 vehicle_incr
 ```
 
 This table shows the vehicle count and percent increase in Foster City over time based on EMFAC projections. 
 We can see the vehicle count going up about 392,308 cars from 2020 to 2050 which will mean more vehicles that will be damaged with Sea Level Rise in 2050.
 
-```{r}
+```{r, include=FALSE, progress=F}
 #risk estimation 4
 fc_veh_per_bldg <- readRDS("fc_veh_per_bldg.rds") %>% 
   st_set_geometry(NULL) %>%
@@ -921,8 +918,7 @@ fc_veh_aal_by_year <- fc_veh_aal_by_year %>%
     damage_per_bldg = damage * veh_per_bldg * perc_incr
   )
   
-```
-```{r}
+
 fc_bldg_aal_by_year_map <-
   fc_bldg_aal_by_year %>% 
   pivot_wider(
@@ -1093,9 +1089,6 @@ fc_veh_aal_by_year_map %>%
   ) %>% 
   showGroup("2050")
 ```
-
-
-
 
 
 ```{r}
